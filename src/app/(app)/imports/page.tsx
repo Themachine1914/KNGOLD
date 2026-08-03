@@ -2,7 +2,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { listImports } from "@/lib/imports";
 import { importStatusLabel, importStatusTone } from "@/lib/labels";
-import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui";
+import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { format, differenceInCalendarDays, isPast, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -18,8 +18,8 @@ export default async function ImportsPage() {
         subtitle="Pedidos en camino y fecha estimada de llegada."
         action={
           isOwner ? (
-            <Link href="/imports/new">
-              <Button className="px-3 py-2 text-xs">Nueva</Button>
+            <Link href="/imports/new" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gold px-4 py-3 text-sm font-semibold text-ink transition hover:bg-gold-dark hover:text-white">
+              Nueva
             </Link>
           ) : null
         }

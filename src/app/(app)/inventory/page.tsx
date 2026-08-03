@@ -88,8 +88,8 @@ export default async function InventoryPage({
           body="Ninguno coincide con esa búsqueda."
           action={
             q || type ? (
-              <Link href="/inventory">
-                <Button variant="secondary">Ver todo el inventario</Button>
+              <Link href="/inventory" className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-border bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-border/30">
+                Ver todo el inventario
               </Link>
             ) : undefined
           }

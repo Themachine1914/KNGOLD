@@ -1,4 +1,3 @@
-import { FieldValue } from "firebase-admin/firestore";
 import { addHours } from "date-fns";
 import { getDb, newId } from "./firebase";
 import { calcQuoteTotals, round2 } from "./pricing";
@@ -113,10 +112,25 @@ async function claimQuote(
   });
 }
 
+function assertProduct(raw: Record<string, unknown>, id: string): Product {
+  const p = { id, ...raw } as Product;
+  for (const field of ["stockOnHand", "netPrice", "listPrice"] as const) {
+    if (!Number.isFinite(Number(p[field]))) {
+      // Sin esto, `available` sale NaN y `line.qty > NaN` es false: la
+      // validación de stock se salta y se reserva cantidad ilimitada, con
+      // totales NaN guardados en la base.
+      throw new Error(
+        `El producto ${p.sku ?? id} tiene el campo ${field} inválido o vacío.`
+      );
+    }
+  }
+  return p;
+}
+
 async function getProduct(id: string): Promise<Product> {
   const doc = await getDb().collection("products").doc(id).get();
   if (!doc.exists) throw new Error("Producto no encontrado");
-  return { id: doc.id, ...doc.data() } as Product;
+  return assertProduct(doc.data() as Record<string, unknown>, doc.id);
 }
 
 async function writeMovement(data: Omit<InventoryMovement, "id" | "createdAt"> & { id?: string }) {
@@ -176,9 +190,9 @@ export async function createReservedQuote(input: {
     address: input.customer.address || null,
     email: input.customer.email || null,
   };
-  await getDb().collection("customers").doc(customerId).set(customer);
 
   const builtLines: QuoteLine[] = [];
+  const balances = new Map<string, { stockAfter: number; availableAfter: number }>();
   for (const line of lines) {
     const product = await getProduct(line.productId);
     builtLines.push({
@@ -189,6 +203,13 @@ export async function createReservedQuote(input: {
       // Sin redondear, la suma de las líneas que ve el cliente puede diferir
       // un centavo del subtotal, que sí se redondea.
       lineTotal: round2(product.netPrice * line.qty),
+    });
+    const reservedAntes = await getReservedQty(line.productId);
+    balances.set(line.productId, {
+      stockAfter: product.stockOnHand,
+      // La reserva que estamos creando aún no está escrita, así que se suma
+      // a mano para que el histórico refleje el disponible resultante.
+      availableAfter: product.stockOnHand - reservedAntes - line.qty,
     });
   }
 
@@ -217,89 +238,114 @@ export async function createReservedQuote(input: {
     updatedAt: now,
     lines: builtLines,
   };
-  await getDb().collection("quotes").doc(quoteId).set(quote);
 
+  // Cliente, cotización y movimientos van en un solo lote. Antes eran
+  // escrituras sueltas: si fallaba a la mitad quedaba un cliente huérfano, o
+  // una cotización apartando stock sin ningún movimiento que lo justificara.
+  const db = getDb();
+  const batch = db.batch();
+  batch.set(db.collection("customers").doc(customerId), customer);
+  batch.set(db.collection("quotes").doc(quoteId), quote);
   for (const line of builtLines) {
-    const product = await getProduct(line.productId);
-    const reserved = await getReservedQty(line.productId);
-    await writeMovement({
+    const movId = newId();
+    const bal = balances.get(line.productId)!;
+    batch.set(db.collection("movements").doc(movId), {
+      id: movId,
       productId: line.productId,
       type: "RESERVA",
       qty: line.qty,
-      stockAfter: product.stockOnHand,
-      availableAfter: product.stockOnHand - reserved,
+      stockAfter: bal.stockAfter,
+      availableAfter: bal.availableAfter,
       quoteId,
       userId: input.sellerId,
       note: `Reserva cotización #${number}`,
+      createdAt: now,
     });
   }
+  await batch.commit();
 
   return quote;
 }
 
 export async function confirmQuote(quoteId: string, userId: string) {
-  const ref = getDb().collection("quotes").doc(quoteId);
-  const snap = await ref.get();
-  if (!snap.exists) throw new Error("Cotización no encontrada");
-  const preview = { id: snap.id, ...snap.data() } as Quote;
-  if (preview.status !== "RESERVED") {
-    throw new Error("Solo se pueden confirmar cotizaciones reservadas.");
-  }
-  // El barrido de expiración solo corre al abrir ciertas páginas, así que una
-  // reserva vencida puede seguir en RESERVED al llegar aquí.
-  if (preview.reservedUntil && new Date(preview.reservedUntil).getTime() <= Date.now()) {
-    throw new Error(
-      "La reserva venció y el stock volvió a estar disponible. Crea una cotización nueva."
-    );
-  }
+  const db = getDb();
+  const qref = db.collection("quotes").doc(quoteId);
 
-  // Comprobamos el stock antes de reclamar, para no dejar la cotización
-  // confirmada si la mercancía ya no alcanza.
-  for (const line of preview.lines || []) {
-    const product = await getProduct(line.productId);
-    if (product.stockOnHand < line.qty) {
-      throw new Error(`Stock físico insuficiente para ${product.sku} al confirmar.`);
+  // Todo en UNA transacción. Antes se reclamaba la cotización y después se
+  // descontaba el stock línea por línea, cada una con su propia transacción:
+  // si el proceso moría a la mitad —o una línea fallaba por stock—, la venta
+  // quedaba CONFIRMED con la mercancía a medio descontar y la reserva ya
+  // liberada. Esa mercancía se vendía dos veces.
+  //
+  // Firestore exige todas las lecturas antes de cualquier escritura, de ahí
+  // el getAll previo.
+  const reservedByProduct = new Map<string, number>();
+  const preview = await qref.get();
+  if (!preview.exists) throw new Error("Cotización no encontrada");
+  for (const line of ((preview.data()?.lines || []) as QuoteLine[])) {
+    if (!reservedByProduct.has(line.productId)) {
+      reservedByProduct.set(
+        line.productId,
+        await getReservedQty(line.productId, quoteId)
+      );
     }
   }
 
-  const quote = await claimQuote(
-    quoteId,
-    (q) =>
-      q.status === "RESERVED" &&
-      (!q.reservedUntil || new Date(q.reservedUntil).getTime() > Date.now()),
-    { status: "CONFIRMED", reservedUntil: null }
-  );
-  if (!quote) {
-    throw new Error("La cotización cambió de estado; recarga la página.");
-  }
+  await db.runTransaction(async (tx) => {
+    const qdoc = await tx.get(qref);
+    if (!qdoc.exists) throw new Error("Cotización no encontrada");
+    const quote = { id: qdoc.id, ...qdoc.data() } as Quote;
 
-  for (const line of quote.lines || []) {
-    const pref = getDb().collection("products").doc(line.productId);
-    await getDb().runTransaction(async (tx) => {
-      const pdoc = await tx.get(pref);
+    if (quote.status !== "RESERVED") {
+      throw new Error("Solo se pueden confirmar cotizaciones reservadas.");
+    }
+    // El barrido de expiración solo corre al abrir ciertas páginas, así que
+    // una reserva vencida puede seguir en RESERVED al llegar aquí.
+    if (quote.reservedUntil && new Date(quote.reservedUntil).getTime() <= Date.now()) {
+      throw new Error(
+        "La reserva venció y el stock volvió a estar disponible. Crea una cotización nueva."
+      );
+    }
+
+    const lines = quote.lines || [];
+    if (!lines.length) throw new Error("La cotización no tiene líneas.");
+
+    const prefs = lines.map((l) => db.collection("products").doc(l.productId));
+    const pdocs = await tx.getAll(...prefs);
+
+    const updates = pdocs.map((pdoc, i) => {
       if (!pdoc.exists) throw new Error("Producto no encontrado");
-      const stock = Number(pdoc.data()?.stockOnHand || 0);
-      if (stock < line.qty) {
-        throw new Error(`Stock físico insuficiente para ${pdoc.data()?.sku}`);
+      const sku = pdoc.data()?.sku ?? pdoc.id;
+      const stock = Number(pdoc.data()?.stockOnHand);
+      if (!Number.isFinite(stock)) {
+        throw new Error(`El producto ${sku} no tiene stock válido registrado.`);
       }
-      tx.update(pref, {
-        stockOnHand: stock - line.qty,
-        updatedAt: new Date().toISOString(),
+      if (stock < lines[i].qty) {
+        throw new Error(`Stock físico insuficiente para ${sku} al confirmar.`);
+      }
+      return { ref: prefs[i], next: stock - lines[i].qty };
+    });
+
+    const now = new Date().toISOString();
+    tx.update(qref, { status: "CONFIRMED", reservedUntil: null, updatedAt: now });
+
+    updates.forEach(({ ref, next }, i) => {
+      tx.update(ref, { stockOnHand: next, updatedAt: now });
+      const movId = newId();
+      tx.set(db.collection("movements").doc(movId), {
+        id: movId,
+        productId: lines[i].productId,
+        type: "CONFIRMACION_VENTA",
+        qty: lines[i].qty,
+        stockAfter: next,
+        availableAfter: next - (reservedByProduct.get(lines[i].productId) ?? 0),
+        quoteId,
+        userId,
+        note: `Confirmación cotización #${quote.number}`,
+        createdAt: now,
       });
     });
-    const product = await getProduct(line.productId);
-    const reservedOthers = await getReservedQty(line.productId, quoteId);
-    await writeMovement({
-      productId: line.productId,
-      type: "CONFIRMACION_VENTA",
-      qty: line.qty,
-      stockAfter: product.stockOnHand,
-      availableAfter: product.stockOnHand - reservedOthers,
-      quoteId,
-      userId,
-      note: `Confirmación cotización #${quote.number}`,
-    });
-  }
+  });
 }
 
 export async function cancelQuote(quoteId: string, userId: string) {
@@ -379,43 +425,60 @@ export async function adjustStock(input: {
   userId: string;
   note?: string;
 }) {
-  if (!input.qtyDelta) throw new Error("Datos inválidos");
-  const pref = getDb().collection("products").doc(input.productId);
-  let next = 0;
-  await getDb().runTransaction(async (tx) => {
-    const pdoc = await tx.get(pref);
-    if (!pdoc.exists) throw new Error("Producto no encontrado");
-    const stock = Number(pdoc.data()?.stockOnHand || 0);
-    next = stock + input.qtyDelta;
-    if (next < 0) throw new Error("El stock no puede quedar negativo.");
-    tx.update(pref, { stockOnHand: next, updatedAt: new Date().toISOString() });
-  });
-
-  const reserved = await getReservedQty(input.productId);
-  if (next < reserved) {
-    // rollback-ish: put stock back
-    await pref.update({
-      stockOnHand: FieldValue.increment(-input.qtyDelta),
-    });
-    throw new Error(
-      `No se puede bajar el stock por debajo de las reservas activas (${reserved}).`
-    );
+  if (!Number.isInteger(input.qtyDelta) || input.qtyDelta === 0) {
+    throw new Error("El ajuste debe ser un número entero distinto de cero.");
   }
 
-  let type: MovementType = "AJUSTE";
-  if (input.qtyDelta > 0) type = "ENTRADA";
-  if (input.qtyDelta < 0) type = "SALIDA";
+  // Las reservas se leen antes: Firestore no admite consultas dentro de una
+  // transacción. Se usan como límite inferior, no como dato del histórico.
+  const reserved = await getReservedQty(input.productId);
 
-  await writeMovement({
-    productId: input.productId,
-    type,
-    qty: Math.abs(input.qtyDelta),
-    stockAfter: next,
-    availableAfter: next - reserved,
-    userId: input.userId,
-    note:
-      input.note ||
-      `Ajuste de inventario (${input.qtyDelta > 0 ? "+" : ""}${input.qtyDelta})`,
+  const db = getDb();
+  const pref = db.collection("products").doc(input.productId);
+
+  // Producto y movimiento en la MISMA transacción. Antes se bajaba el stock,
+  // se leían las reservas y, si no cuadraba, se "deshacía" con un increment
+  // negativo. Si el proceso moría entre medias, el stock quedaba bajado por
+  // debajo de las reservas y sin ningún movimiento que lo registrara:
+  // mercancía perdida de forma invisible.
+  await db.runTransaction(async (tx) => {
+    const pdoc = await tx.get(pref);
+    if (!pdoc.exists) throw new Error("Producto no encontrado");
+    const sku = pdoc.data()?.sku ?? pdoc.id;
+    const stock = Number(pdoc.data()?.stockOnHand);
+    if (!Number.isFinite(stock)) {
+      throw new Error(`El producto ${sku} no tiene stock válido registrado.`);
+    }
+
+    const next = stock + input.qtyDelta;
+    if (next < 0) throw new Error("El stock no puede quedar negativo.");
+    if (next < reserved) {
+      throw new Error(
+        `No se puede bajar el stock por debajo de las reservas activas (${reserved}).`
+      );
+    }
+
+    let type: MovementType = "AJUSTE";
+    if (input.qtyDelta > 0) type = "ENTRADA";
+    if (input.qtyDelta < 0) type = "SALIDA";
+
+    const now = new Date().toISOString();
+    tx.update(pref, { stockOnHand: next, updatedAt: now });
+
+    const movId = newId();
+    tx.set(db.collection("movements").doc(movId), {
+      id: movId,
+      productId: input.productId,
+      type,
+      qty: Math.abs(input.qtyDelta),
+      stockAfter: next,
+      availableAfter: next - reserved,
+      userId: input.userId,
+      note:
+        input.note ||
+        `Ajuste de inventario (${input.qtyDelta > 0 ? "+" : ""}${input.qtyDelta})`,
+      createdAt: now,
+    });
   });
 }
 
@@ -467,7 +530,8 @@ export async function listQuotes(sellerId?: string): Promise<Quote[]> {
   const snap = await getDb().collection("quotes").get();
   let quotes = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Quote[];
   if (sellerId) quotes = quotes.filter((q) => q.sellerId === sellerId);
-  quotes.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  // Un documento sin createdAt tumbaba /quotes y /dashboard enteros.
+  quotes.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
 
   for (const q of quotes) {
     const c = await getDb().collection("customers").doc(q.customerId).get();

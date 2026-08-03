@@ -12,6 +12,15 @@ type Attempt = { count: number; firstAt: number; blockedUntil?: number };
 
 const attempts = new Map<string, Attempt>();
 
+/**
+ * La clave lleva correo Y dirección. Con solo el correo, cualquiera que
+ * conozca `dueno@kngold.com.do` lo deja fuera de su propia app mandando
+ * cinco intentos fallidos cada quince minutos.
+ */
+export function attemptKey(email: string, ip: string | null): string {
+  return `${email}|${ip ?? "sin-ip"}`;
+}
+
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 const BLOCK_MS = 15 * 60 * 1000;
@@ -23,6 +32,14 @@ function sweep(now: number) {
     const expired = now - a.firstAt > WINDOW_MS;
     const unblocked = !a.blockedUntil || a.blockedUntil <= now;
     if (expired && unblocked) attempts.delete(key);
+  }
+  // Si siguen todas vivas (un ataque con muchas claves a la vez), se poda por
+  // antigüedad. Sin esto el mapa crecía por encima del tope.
+  if (attempts.size > MAX_KEYS) {
+    const porEdad = [...attempts.entries()].sort((a, b) => a[1].firstAt - b[1].firstAt);
+    for (const [key] of porEdad.slice(0, attempts.size - MAX_KEYS)) {
+      attempts.delete(key);
+    }
   }
 }
 

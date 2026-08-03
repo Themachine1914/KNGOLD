@@ -13,10 +13,25 @@ async function nextImportNumber(): Promise<number> {
   });
 }
 
+function assertProduct(raw: Record<string, unknown>, id: string): Product {
+  const p = { id, ...raw } as Product;
+  for (const field of ["stockOnHand", "netPrice", "listPrice"] as const) {
+    if (!Number.isFinite(Number(p[field]))) {
+      // Sin esto, `available` sale NaN y `line.qty > NaN` es false: la
+      // validación de stock se salta y se reserva cantidad ilimitada, con
+      // totales NaN guardados en la base.
+      throw new Error(
+        `El producto ${p.sku ?? id} tiene el campo ${field} inválido o vacío.`
+      );
+    }
+  }
+  return p;
+}
+
 async function getProduct(id: string): Promise<Product> {
   const doc = await getDb().collection("products").doc(id).get();
   if (!doc.exists) throw new Error("Producto no encontrado");
-  return { id: doc.id, ...doc.data() } as Product;
+  return assertProduct(doc.data() as Record<string, unknown>, doc.id);
 }
 
 /**
@@ -107,50 +122,69 @@ export async function updateImportStatus(importId: string, status: ImportStatus)
 }
 
 export async function receiveImportOrder(importId: string, userId: string) {
-  const now = new Date().toISOString();
+  const db = getDb();
+  const iref = db.collection("imports").doc(importId);
 
-  // Reclamamos ANTES de sumar stock. Si se hiciera al revés, un doble toque
-  // sobre "Confirmar llegada" ingresaría la mercancía dos veces.
-  const order = await claimImport(importId, isOpen, {
-    status: "ARRIVED",
-    arrivedAt: now,
-  });
-  if (!order) {
-    const current = await getImport(importId);
-    throw new Error(
-      current?.status === "ARRIVED"
-        ? "Este pedido ya fue recibido."
-        : "No se puede recibir un pedido cancelado."
-    );
+  // Todo en UNA transacción. Antes se reclamaba el pedido y después se sumaba
+  // el stock línea por línea, cada una por su cuenta: si el proceso moría a la
+  // mitad, el pedido quedaba ARRIVED con la mercancía a medio entrar, y nada
+  // lo volvía a intentar.
+  //
+  // Firestore exige todas las lecturas antes de cualquier escritura.
+  const preview = await iref.get();
+  if (!preview.exists) throw new Error("Pedido no encontrado");
+  const reservedByProduct = new Map<string, number>();
+  for (const line of ((preview.data()?.lines || []) as ImportOrderLine[])) {
+    if (!reservedByProduct.has(line.productId)) {
+      reservedByProduct.set(line.productId, await getReservedQty(line.productId));
+    }
   }
 
-  for (const line of order.lines || []) {
-    const pref = getDb().collection("products").doc(line.productId);
-    let next = 0;
-    await getDb().runTransaction(async (tx) => {
-      const pdoc = await tx.get(pref);
+  await db.runTransaction(async (tx) => {
+    const idoc = await tx.get(iref);
+    if (!idoc.exists) throw new Error("Pedido no encontrado");
+    const order = { id: idoc.id, ...idoc.data() } as ImportOrder;
+
+    if (order.status === "ARRIVED") throw new Error("Este pedido ya fue recibido.");
+    if (order.status === "CANCELLED") {
+      throw new Error("No se puede recibir un pedido cancelado.");
+    }
+
+    const lines = order.lines || [];
+    if (!lines.length) throw new Error("El pedido no tiene líneas.");
+
+    const prefs = lines.map((l) => db.collection("products").doc(l.productId));
+    const pdocs = await tx.getAll(...prefs);
+
+    const updates = pdocs.map((pdoc, i) => {
       if (!pdoc.exists) throw new Error("Producto no encontrado");
-      const stock = Number(pdoc.data()?.stockOnHand || 0);
-      next = stock + line.qty;
-      tx.update(pref, { stockOnHand: next, updatedAt: now });
+      const sku = pdoc.data()?.sku ?? pdoc.id;
+      const stock = Number(pdoc.data()?.stockOnHand);
+      if (!Number.isFinite(stock)) {
+        throw new Error(`El producto ${sku} no tiene stock válido registrado.`);
+      }
+      return { ref: prefs[i], next: stock + lines[i].qty };
     });
-    const reserved = await getReservedQty(line.productId);
-    const movId = newId();
-    await getDb()
-      .collection("movements")
-      .doc(movId)
-      .set({
+
+    const now = new Date().toISOString();
+    tx.update(iref, { status: "ARRIVED", arrivedAt: now, updatedAt: now });
+
+    updates.forEach(({ ref, next }, i) => {
+      tx.update(ref, { stockOnHand: next, updatedAt: now });
+      const movId = newId();
+      tx.set(db.collection("movements").doc(movId), {
         id: movId,
-        productId: line.productId,
+        productId: lines[i].productId,
         type: "ENTRADA",
-        qty: line.qty,
+        qty: lines[i].qty,
         stockAfter: next,
-        availableAfter: next - reserved,
+        availableAfter: next - (reservedByProduct.get(lines[i].productId) ?? 0),
         userId,
         note: `Importación #${order.number} llegada`,
         createdAt: now,
       });
-  }
+    });
+  });
 
   return getImport(importId);
 }
@@ -172,7 +206,7 @@ export async function listImports(): Promise<ImportOrder[]> {
   const snap = await getDb().collection("imports").get();
   const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ImportOrder[];
   list.sort((a, b) => {
-    if (a.status === b.status) return a.eta.localeCompare(b.eta);
+    if (a.status === b.status) return (a.eta ?? "").localeCompare(b.eta ?? "");
     return a.status.localeCompare(b.status);
   });
   for (const item of list) {
@@ -204,7 +238,7 @@ export async function listUpcomingImports(limit = 5): Promise<ImportOrder[]> {
   const all = await listImports();
   return all
     .filter((i) => i.status === "ORDERED" || i.status === "IN_TRANSIT")
-    .sort((a, b) => a.eta.localeCompare(b.eta))
+    .sort((a, b) => (a.eta ?? "").localeCompare(b.eta ?? ""))
     .slice(0, limit);
 }
 
