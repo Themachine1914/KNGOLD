@@ -1,148 +1,180 @@
-import { ImportStatus, MovementType, type PrismaClient } from "@prisma/client";
+import { getDb, newId } from "./firebase";
 import { getReservedQty } from "./inventory";
+import type { ImportOrder, ImportOrderLine, ImportStatus, Product, User } from "./types";
 
-export async function createImportOrder(
-  db: PrismaClient,
-  input: {
-    createdById: string;
-    supplier?: string;
-    eta: Date;
-    notes?: string;
-    status?: ImportStatus;
-    lines: { productId: string; qty: number }[];
-  }
-) {
-  if (!input.lines.length) {
-    throw new Error("El pedido debe tener al menos un producto.");
-  }
+async function nextImportNumber(): Promise<number> {
+  const ref = getDb().collection("counters").doc("imports");
+  return getDb().runTransaction(async (tx) => {
+    const doc = await tx.get(ref);
+    const current = doc.exists ? Number(doc.data()?.seq || 0) : 0;
+    const next = current + 1;
+    tx.set(ref, { seq: next }, { merge: true });
+    return next;
+  });
+}
+
+async function getProduct(id: string): Promise<Product> {
+  const doc = await getDb().collection("products").doc(id).get();
+  if (!doc.exists) throw new Error("Producto no encontrado");
+  return { id: doc.id, ...doc.data() } as Product;
+}
+
+export async function createImportOrder(input: {
+  createdById: string;
+  supplier?: string;
+  eta: Date;
+  notes?: string;
+  status?: ImportStatus;
+  lines: { productId: string; qty: number }[];
+}): Promise<ImportOrder> {
+  if (!input.lines.length) throw new Error("El pedido debe tener al menos un producto.");
   for (const line of input.lines) {
     if (line.qty <= 0) throw new Error("Cantidad inválida.");
   }
 
-  const last = await db.importOrder.findFirst({
-    orderBy: { number: "desc" },
-    select: { number: true },
-  });
+  const lines: ImportOrderLine[] = input.lines.map((l) => ({
+    id: newId(),
+    productId: l.productId,
+    qty: l.qty,
+  }));
 
-  return db.importOrder.create({
-    data: {
-      number: (last?.number || 0) + 1,
-      supplier: input.supplier?.trim() || null,
-      eta: input.eta,
-      notes: input.notes?.trim() || null,
-      status: input.status || ImportStatus.ORDERED,
-      createdById: input.createdById,
-      lines: {
-        create: input.lines.map((l) => ({
-          productId: l.productId,
-          qty: l.qty,
-        })),
-      },
-    },
-    include: {
-      lines: { include: { product: true } },
-      createdBy: true,
-    },
-  });
+  const id = newId();
+  const now = new Date().toISOString();
+  const order: ImportOrder = {
+    id,
+    number: await nextImportNumber(),
+    supplier: input.supplier?.trim() || null,
+    status: input.status || "ORDERED",
+    eta: input.eta.toISOString(),
+    arrivedAt: null,
+    notes: input.notes?.trim() || null,
+    createdById: input.createdById,
+    createdAt: now,
+    updatedAt: now,
+    lines,
+  };
+  await getDb().collection("imports").doc(id).set(order);
+  return order;
 }
 
-export async function updateImportStatus(
-  db: PrismaClient,
-  importId: string,
-  status: ImportStatus
-) {
-  const existing = await db.importOrder.findUniqueOrThrow({
-    where: { id: importId },
-  });
-  if (existing.status === ImportStatus.ARRIVED) {
-    throw new Error("Este pedido ya llegó; no se puede cambiar.");
+export async function updateImportStatus(importId: string, status: ImportStatus) {
+  const ref = getDb().collection("imports").doc(importId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("Pedido no encontrado");
+  const existing = snap.data() as ImportOrder;
+  if (existing.status === "ARRIVED") throw new Error("Este pedido ya llegó; no se puede cambiar.");
+  if (existing.status === "CANCELLED") throw new Error("Este pedido está cancelado.");
+  if (status === "ARRIVED") {
+    throw new Error("Usa receiveImportOrder para marcar llegada");
   }
-  if (existing.status === ImportStatus.CANCELLED) {
-    throw new Error("Este pedido está cancelado.");
-  }
-  if (status === ImportStatus.ARRIVED) {
-    return receiveImportOrder(db, importId, existing.createdById);
-  }
-
-  return db.importOrder.update({
-    where: { id: importId },
-    data: { status },
-    include: {
-      lines: { include: { product: true } },
-      createdBy: true,
-    },
-  });
+  await ref.update({ status, updatedAt: new Date().toISOString() });
+  return getImport(importId);
 }
 
-/** Marca llegada e ingresa mercancía al inventario. */
-export async function receiveImportOrder(
-  db: PrismaClient,
-  importId: string,
-  userId: string
-) {
-  return db.$transaction(async (tx) => {
-    const order = await tx.importOrder.findUniqueOrThrow({
-      where: { id: importId },
-      include: { lines: true },
+export async function receiveImportOrder(importId: string, userId: string) {
+  const ref = getDb().collection("imports").doc(importId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("Pedido no encontrado");
+  const order = { id: snap.id, ...snap.data() } as ImportOrder;
+  if (order.status === "ARRIVED") throw new Error("Este pedido ya fue recibido.");
+  if (order.status === "CANCELLED") throw new Error("No se puede recibir un pedido cancelado.");
+
+  const now = new Date().toISOString();
+  for (const line of order.lines || []) {
+    const pref = getDb().collection("products").doc(line.productId);
+    let next = 0;
+    await getDb().runTransaction(async (tx) => {
+      const pdoc = await tx.get(pref);
+      if (!pdoc.exists) throw new Error("Producto no encontrado");
+      const stock = Number(pdoc.data()?.stockOnHand || 0);
+      next = stock + line.qty;
+      tx.update(pref, { stockOnHand: next, updatedAt: now });
     });
-
-    if (order.status === ImportStatus.ARRIVED) {
-      throw new Error("Este pedido ya fue recibido.");
-    }
-    if (order.status === ImportStatus.CANCELLED) {
-      throw new Error("No se puede recibir un pedido cancelado.");
-    }
-
-    for (const line of order.lines) {
-      const product = await tx.product.findUniqueOrThrow({
-        where: { id: line.productId },
+    const reserved = await getReservedQty(line.productId);
+    const movId = newId();
+    await getDb()
+      .collection("movements")
+      .doc(movId)
+      .set({
+        id: movId,
+        productId: line.productId,
+        type: "ENTRADA",
+        qty: line.qty,
+        stockAfter: next,
+        availableAfter: next - reserved,
+        userId,
+        note: `Importación #${order.number} llegada`,
+        createdAt: now,
       });
-      const next = product.stockOnHand + line.qty;
-      await tx.product.update({
-        where: { id: line.productId },
-        data: { stockOnHand: next },
-      });
-      const reserved = await getReservedQty(tx, line.productId);
-      await tx.inventoryMovement.create({
-        data: {
-          productId: line.productId,
-          type: MovementType.ENTRADA,
-          qty: line.qty,
-          stockAfter: next,
-          availableAfter: next - reserved,
-          userId,
-          note: `Importación #${order.number} llegada`,
-        },
-      });
-    }
+  }
 
-    return tx.importOrder.update({
-      where: { id: importId },
-      data: {
-        status: ImportStatus.ARRIVED,
-        arrivedAt: new Date(),
-      },
-      include: {
-        lines: { include: { product: true } },
-        createdBy: true,
-      },
-    });
+  await ref.update({
+    status: "ARRIVED",
+    arrivedAt: now,
+    updatedAt: now,
   });
+  return getImport(importId);
 }
 
-export async function cancelImportOrder(db: PrismaClient, importId: string) {
-  const order = await db.importOrder.findUniqueOrThrow({
-    where: { id: importId },
-  });
-  if (order.status === ImportStatus.ARRIVED) {
+export async function cancelImportOrder(importId: string) {
+  const ref = getDb().collection("imports").doc(importId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("Pedido no encontrado");
+  if (snap.data()?.status === "ARRIVED") {
     throw new Error("No se puede cancelar un pedido ya recibido.");
   }
-  return db.importOrder.update({
-    where: { id: importId },
-    data: { status: ImportStatus.CANCELLED },
-    include: {
-      lines: { include: { product: true } },
-      createdBy: true,
-    },
+  await ref.update({ status: "CANCELLED", updatedAt: new Date().toISOString() });
+  return getImport(importId);
+}
+
+export async function listImports(): Promise<ImportOrder[]> {
+  const snap = await getDb().collection("imports").get();
+  const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ImportOrder[];
+  list.sort((a, b) => {
+    if (a.status === b.status) return a.eta.localeCompare(b.eta);
+    return a.status.localeCompare(b.status);
   });
+  for (const item of list) {
+    const u = await getDb().collection("users").doc(item.createdById).get();
+    if (u.exists) item.createdBy = { id: u.id, ...u.data() } as User;
+  }
+  return list;
+}
+
+export async function getImport(id: string): Promise<ImportOrder | null> {
+  const doc = await getDb().collection("imports").doc(id).get();
+  if (!doc.exists) return null;
+  const order = { id: doc.id, ...doc.data() } as ImportOrder;
+  const u = await getDb().collection("users").doc(order.createdById).get();
+  if (u.exists) order.createdBy = { id: u.id, ...u.data() } as User;
+  if (order.lines) {
+    for (const line of order.lines) {
+      try {
+        line.product = await getProduct(line.productId);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return order;
+}
+
+export async function listUpcomingImports(limit = 5): Promise<ImportOrder[]> {
+  const all = await listImports();
+  return all
+    .filter((i) => i.status === "ORDERED" || i.status === "IN_TRANSIT")
+    .sort((a, b) => a.eta.localeCompare(b.eta))
+    .slice(0, limit);
+}
+
+export async function listActiveProducts() {
+  const snap = await getDb()
+    .collection("products")
+    .where("active", "==", true)
+    .get();
+  const products = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Product[];
+  products.sort((a, b) =>
+    a.type === b.type ? a.name.localeCompare(b.name) : a.type.localeCompare(b.type)
+  );
+  return products;
 }

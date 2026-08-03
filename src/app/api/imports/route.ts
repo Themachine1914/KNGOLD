@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
-import { ImportStatus, Role } from "@prisma/client";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { createImportOrder } from "@/lib/imports";
+import type { ImportStatus } from "@/lib/types";
 
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
-  if (session.user.role !== Role.OWNER) {
+  if (session.user.role !== "OWNER") {
     return NextResponse.json({ error: "Solo el dueño registra importaciones" }, { status: 403 });
   }
 
@@ -26,10 +25,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Fecha inválida" }, { status: 400 });
     }
 
-    const status =
-      body.status === "IN_TRANSIT" ? ImportStatus.IN_TRANSIT : ImportStatus.ORDERED;
+    const status: ImportStatus =
+      body.status === "IN_TRANSIT" ? "IN_TRANSIT" : "ORDERED";
 
-    const order = await createImportOrder(prisma, {
+    const order = await createImportOrder({
       createdById: session.user.id,
       supplier: body.supplier ? String(body.supplier) : undefined,
       eta,

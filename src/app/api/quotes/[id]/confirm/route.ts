@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { Role } from "@prisma/client";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { confirmQuote } from "@/lib/inventory";
+import { confirmQuote, getQuote } from "@/lib/inventory";
 
 export async function POST(
   _req: Request,
@@ -14,20 +12,17 @@ export async function POST(
   }
 
   const { id } = await params;
-  const existing = await prisma.quote.findUnique({ where: { id } });
+  const existing = await getQuote(id);
   if (!existing) {
     return NextResponse.json({ error: "No encontrada" }, { status: 404 });
   }
-  if (
-    session.user.role !== Role.OWNER &&
-    existing.sellerId !== session.user.id
-  ) {
+  if (session.user.role !== "OWNER" && existing.sellerId !== session.user.id) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
   try {
-    const quote = await confirmQuote(prisma, id, session.user.id);
-    return NextResponse.json({ ok: true, quote });
+    await confirmQuote(id, session.user.id);
+    return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Error" },

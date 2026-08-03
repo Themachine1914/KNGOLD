@@ -1,9 +1,9 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { Role } from "@prisma/client";
 import { authConfig } from "./auth.config";
-import { prisma } from "./prisma";
+import { getDb } from "./firebase";
+import type { Role, User } from "./types";
 
 declare module "next-auth" {
   interface User {
@@ -34,8 +34,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const password = String(credentials?.password || "");
         if (!email || !password) return null;
 
-        const user = await prisma.user.findUnique({ where: { email } });
-        if (!user || !user.active) return null;
+        const snap = await getDb()
+          .collection("users")
+          .where("email", "==", email)
+          .limit(1)
+          .get();
+        if (snap.empty) return null;
+        const doc = snap.docs[0];
+        const user = { id: doc.id, ...doc.data() } as User;
+        if (!user.active) return null;
 
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
@@ -59,6 +66,6 @@ export async function requireSession() {
 
 export async function requireOwner() {
   const session = await requireSession();
-  if (session.user.role !== Role.OWNER) throw new Error("FORBIDDEN");
+  if (session.user.role !== "OWNER") throw new Error("FORBIDDEN");
   return session;
 }

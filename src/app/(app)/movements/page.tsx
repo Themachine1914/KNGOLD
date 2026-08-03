@@ -1,29 +1,18 @@
-import { Role } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { expireReservedQuotes, movementDelta } from "@/lib/inventory";
+import { expireReservedQuotes, listMovements, movementDelta } from "@/lib/inventory";
 import { movementLabel, movementTone } from "@/lib/labels";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { ProductThumb } from "@/components/product-thumb";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 export default async function MovementsPage() {
   const session = await auth();
-  if (session!.user.role !== Role.OWNER) redirect("/dashboard");
+  if (session!.user.role !== "OWNER") redirect("/dashboard");
 
-  await expireReservedQuotes(prisma);
-
-  const movements = await prisma.inventoryMovement.findMany({
-    take: 120,
-    orderBy: { createdAt: "desc" },
-    include: {
-      product: true,
-      user: true,
-      quote: true,
-    },
-  });
+  await expireReservedQuotes();
+  const movements = await listMovements(120);
 
   return (
     <div>
@@ -38,15 +27,11 @@ export default async function MovementsPage() {
         <div className="space-y-2">
           {movements.map((m) => {
             const delta = movementDelta(m.type, m.qty);
-            // Reserva y liberación no tocan el físico: el número que importa
-            // en esas filas es el disponible.
-            const affectsAvailable =
-              m.type === "RESERVA" || m.type === "LIBERACION_RESERVA";
-
+            const remaining = delta.availableFocus ? m.availableAfter : m.stockAfter;
             return (
               <Card key={m.id} className="py-3">
                 <div className="flex items-start gap-3">
-                  <ProductThumb sku={m.product.sku} alt={m.product.name} size="sm" />
+                  <ProductThumb sku={m.product?.sku || "?"} alt={m.product?.name || ""} size="sm" />
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex flex-wrap items-center gap-2">
                       <Badge tone={movementTone(m.type)}>{movementLabel(m.type)}</Badge>
@@ -55,38 +40,20 @@ export default async function MovementsPage() {
                       ) : null}
                     </div>
                     <p className="font-semibold">
-                      {m.product.sku} — {m.product.name}
+                      {m.product?.sku} — {m.product?.name}
                     </p>
                     <p className="text-sm text-muted">
                       {m.user?.name || "Sistema"} ·{" "}
-                      {format(m.createdAt, "dd MMM · HH:mm", { locale: es })}
+                      {format(parseISO(m.createdAt), "dd MMM · HH:mm", { locale: es })}
                     </p>
-                    {m.note ? <p className="mt-1 text-sm text-muted">{m.note}</p> : null}
+                    {m.note ? <p className="mt-1 text-xs text-muted">{m.note}</p> : null}
                   </div>
-
                   <div className="shrink-0 text-right">
-                    <p
-                      className={`text-lg font-semibold leading-none tabular-nums ${
-                        delta.stockDelta < 0 || delta.availableDelta < 0
-                          ? "text-danger"
-                          : delta.stockDelta > 0 || delta.availableDelta > 0
-                            ? "text-success"
-                            : "text-ink"
-                      }`}
-                    >
-                      {delta.label}
+                    <p className="text-lg font-bold leading-none text-ink">{delta.label}</p>
+                    <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      {delta.availableFocus ? "Disp." : "Quedan"}
                     </p>
-                    <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                      {affectsAvailable ? "Disponible" : "Físico"}
-                    </p>
-                    <p className="text-2xl font-semibold leading-none tabular-nums text-ink">
-                      {affectsAvailable ? m.availableAfter : m.stockAfter}
-                    </p>
-                    {affectsAvailable ? (
-                      <p className="mt-1 text-sm text-muted">
-                        Físico <span className="tabular-nums">{m.stockAfter}</span>
-                      </p>
-                    ) : null}
+                    <p className="text-xl font-semibold leading-none">{remaining}</p>
                   </div>
                 </div>
               </Card>

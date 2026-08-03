@@ -5,7 +5,7 @@
       "root": ".",
       "framework": "nextjs",
       "installCommand": "npm install",
-      "buildCommand": "prisma generate && prisma db push --skip-generate && tsx prisma/seed.ts && next build"
+      "buildCommand": "next build"
     }
   },
   "rewrites": [

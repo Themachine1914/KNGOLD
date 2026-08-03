@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { createReservedQuote } from "@/lib/inventory";
 
 export async function POST(req: Request) {
@@ -19,7 +18,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "El cliente es obligatorio" }, { status: 400 });
     }
 
-    const quote = await createReservedQuote(prisma, {
+    const quote = await createReservedQuote({
       sellerId: session.user.id,
       customer: {
         name: String(customer.name).trim(),

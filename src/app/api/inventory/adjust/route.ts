@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { Role } from "@prisma/client";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { adjustStock } from "@/lib/inventory";
 
 export async function POST(req: Request) {
@@ -9,7 +7,7 @@ export async function POST(req: Request) {
   if (!session?.user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
-  if (session.user.role !== Role.OWNER) {
+  if (session.user.role !== "OWNER") {
     return NextResponse.json({ error: "Solo el dueño puede ajustar stock" }, { status: 403 });
   }
 
@@ -23,14 +21,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
     }
 
-    const product = await adjustStock(prisma, {
+    await adjustStock({
       productId,
       qtyDelta,
       userId: session.user.id,
       note,
     });
 
-    return NextResponse.json({ ok: true, product });
+    return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Error" },

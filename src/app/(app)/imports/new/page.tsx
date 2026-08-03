@@ -1,25 +1,21 @@
-import { Role } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { listActiveProducts } from "@/lib/imports";
 import { PageHeader } from "@/components/ui";
 import { NewImportForm } from "@/components/new-import-form";
 
 export default async function NewImportPage() {
   const session = await auth();
-  if (session!.user.role !== Role.OWNER) redirect("/imports");
+  if (session!.user.role !== "OWNER") redirect("/imports");
 
-  const products = await prisma.product.findMany({
-    where: { active: true },
-    orderBy: [{ type: "asc" }, { name: "asc" }],
-    select: {
-      id: true,
-      sku: true,
-      name: true,
-      type: true,
-      stockOnHand: true,
-    },
-  });
+  const products = await listActiveProducts();
+  const options = products.map((p) => ({
+    id: p.id,
+    sku: p.sku,
+    name: p.name,
+    type: p.type,
+    stockOnHand: p.stockOnHand,
+  }));
 
   return (
     <div>
@@ -27,7 +23,7 @@ export default async function NewImportPage() {
         title="Nueva importación"
         subtitle="Registra lo pedido y la fecha estimada de llegada."
       />
-      <NewImportForm products={products} />
+      <NewImportForm products={options} />
     </div>
   );
 }

@@ -1,23 +1,15 @@
 import Link from "next/link";
-import { Role } from "@prisma/client";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { listImports } from "@/lib/imports";
 import { importStatusLabel, importStatusTone } from "@/lib/labels";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui";
-import { format, differenceInCalendarDays, isPast } from "date-fns";
+import { format, differenceInCalendarDays, isPast, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 export default async function ImportsPage() {
   const session = await auth();
-  const isOwner = session!.user.role === Role.OWNER;
-
-  const imports = await prisma.importOrder.findMany({
-    orderBy: [{ status: "asc" }, { eta: "asc" }],
-    include: {
-      lines: true,
-      createdBy: true,
-    },
-  });
+  const isOwner = session!.user.role === "OWNER";
+  const imports = await listImports();
 
   return (
     <div>
@@ -27,7 +19,7 @@ export default async function ImportsPage() {
         action={
           isOwner ? (
             <Link href="/imports/new">
-              <Button variant="gold">Nueva</Button>
+              <Button className="px-3 py-2 text-xs">Nueva</Button>
             </Link>
           ) : null
         }
@@ -37,50 +29,35 @@ export default async function ImportsPage() {
         <EmptyState
           title="Sin pedidos de importación"
           body={isOwner ? "Registra el próximo contenedor o pedido." : undefined}
-          action={
-            isOwner ? (
-              <Link href="/imports/new">
-                <Button variant="gold">Nueva importación</Button>
-              </Link>
-            ) : undefined
-          }
         />
       ) : (
         <div className="space-y-2">
           {imports.map((item) => {
-            const units = item.lines.reduce((s, l) => s + l.qty, 0);
-            const days = differenceInCalendarDays(item.eta, new Date());
+            const units = (item.lines || []).reduce((s, l) => s + l.qty, 0);
+            const eta = parseISO(item.eta);
+            const days = differenceInCalendarDays(eta, new Date());
             const late =
               item.status !== "ARRIVED" &&
               item.status !== "CANCELLED" &&
-              isPast(item.eta);
+              isPast(eta);
 
             return (
-              <Link key={item.id} href={`/imports/${item.id}`} className="block">
-                <Card className="py-3">
+              <Link key={item.id} href={`/imports/${item.id}`}>
+                <Card className="mb-2 py-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold text-ink">
+                      <p className="font-semibold">
                         Pedido #{item.number}
                         {item.supplier ? ` · ${item.supplier}` : ""}
                       </p>
                       <p className="text-sm text-muted">
-                        {item.lines.length} productos ·{" "}
-                        <span className="tabular-nums">{units}</span> unidades
+                        {(item.lines || []).length} productos · {units} unidades
                       </p>
-                      <p className="mt-1 text-base font-semibold text-ink">
-                        ETA{" "}
-                        {format(item.eta, "dd MMM yyyy", { locale: es })}
-                        {item.status !== "ARRIVED" &&
-                        item.status !== "CANCELLED" ? (
+                      <p className="mt-1 text-sm font-semibold text-ink">
+                        ETA {format(eta, "dd MMM yyyy", { locale: es })}
+                        {item.status !== "ARRIVED" && item.status !== "CANCELLED" ? (
                           <span className={late ? " text-danger" : " text-muted"}>
-                            {" "}
-                            ·{" "}
-                            {late
-                              ? `atrasado ${Math.abs(days)}d`
-                              : days === 0
-                                ? "llega hoy"
-                                : `en ${days}d`}
+                            {" "}· {late ? `atrasado ${Math.abs(days)}d` : days === 0 ? "llega hoy" : `en ${days}d`}
                           </span>
                         ) : null}
                       </p>
