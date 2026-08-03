@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Card, Input, Label } from "./ui";
+import { Button, Card, Input, Label, StickyBar } from "./ui";
+import { QtyStepper } from "./qty-stepper";
 import { ProductThumb } from "./product-thumb";
 
 type ProductOpt = {
@@ -32,6 +33,8 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
     [products, qtyByProduct]
   );
 
+  const totalUnits = selected.reduce((s, l) => s + l.qty, 0);
+
   const filtered = products.filter((p) => {
     const q = filter.toLowerCase();
     return (
@@ -54,32 +57,37 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
     }
     setLoading(true);
     setError("");
-    const res = await fetch("/api/imports", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        supplier,
-        eta,
-        notes,
-        status,
-        lines: selected.map((l) => ({
-          productId: l.product.id,
-          qty: l.qty,
-        })),
-      }),
-    });
-    const data = await res.json();
-    setLoading(false);
-    if (!res.ok) {
-      setError(data.error || "No se pudo crear el pedido");
-      return;
+    try {
+      const res = await fetch("/api/imports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supplier,
+          eta,
+          notes,
+          status,
+          lines: selected.map((l) => ({
+            productId: l.product.id,
+            qty: l.qty,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "No se pudo crear el pedido");
+        return;
+      }
+      router.push(`/imports/${data.import.id}`);
+      router.refresh();
+    } catch {
+      setError("Sin conexión. Revisa el internet e intenta de nuevo.");
+    } finally {
+      setLoading(false);
     }
-    router.push(`/imports/${data.import.id}`);
-    router.refresh();
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3">
+    <form onSubmit={submit} className="space-y-3 pb-28">
       <Card className="space-y-3">
         <div>
           <Label htmlFor="supplier">Proveedor / origen</Label>
@@ -100,23 +108,31 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
             onChange={(e) => setEta(e.target.value)}
           />
         </div>
-        <div>
-          <Label>Estado</Label>
+        <div role="group" aria-label="Estado del pedido">
+          <p className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">
+            Estado
+          </p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
+              aria-pressed={status === "ORDERED"}
               onClick={() => setStatus("ORDERED")}
-              className={`rounded-xl border px-3 py-2.5 text-sm font-semibold ${
-                status === "ORDERED" ? "border-ink bg-ink text-white" : "border-border bg-white"
+              className={`min-h-11 rounded-xl border px-3 py-2.5 text-sm font-semibold ${
+                status === "ORDERED"
+                  ? "border-ink bg-ink text-white"
+                  : "border-border bg-white text-ink"
               }`}
             >
-              Pedido
+              Encargado
             </button>
             <button
               type="button"
+              aria-pressed={status === "IN_TRANSIT"}
               onClick={() => setStatus("IN_TRANSIT")}
-              className={`rounded-xl border px-3 py-2.5 text-sm font-semibold ${
-                status === "IN_TRANSIT" ? "border-ink bg-ink text-white" : "border-border bg-white"
+              className={`min-h-11 rounded-xl border px-3 py-2.5 text-sm font-semibold ${
+                status === "IN_TRANSIT"
+                  ? "border-ink bg-ink text-white"
+                  : "border-border bg-white text-ink"
               }`}
             >
               En tránsito
@@ -135,13 +151,14 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
       </Card>
 
       <Card className="space-y-2">
-        <p className="font-semibold">Productos del pedido</p>
+        <p className="font-semibold text-ink">Productos del pedido</p>
         <Input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Buscar producto..."
+          aria-label="Buscar producto"
         />
-        <div className="max-h-[45vh] space-y-2 overflow-y-auto">
+        <div className="space-y-2">
           {filtered.map((p) => {
             const qty = qtyByProduct[p.id] || 0;
             return (
@@ -149,52 +166,23 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
                 key={p.id}
                 className="flex items-center justify-between gap-2 rounded-xl border border-border px-2 py-2"
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex min-w-0 items-center gap-2">
                   <ProductThumb sku={p.sku} alt={p.name} size="sm" />
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{p.sku}</p>
-                    <p className="truncate text-xs text-muted">{p.name}</p>
+                    <p className="truncate text-sm font-semibold text-ink">{p.sku}</p>
+                    <p className="truncate text-sm text-muted">{p.name}</p>
+                    <p className="text-xs text-muted">
+                      Físico <span className="tabular-nums">{p.stockOnHand}</span>
+                    </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    className="h-8 w-8 rounded-lg border border-border text-lg font-semibold"
-                    onClick={() =>
-                      setQtyByProduct({
-                        ...qtyByProduct,
-                        [p.id]: Math.max(0, qty - 1),
-                      })
-                    }
-                  >
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    min={0}
-                    value={qty || ""}
-                    onChange={(e) =>
-                      setQtyByProduct({
-                        ...qtyByProduct,
-                        [p.id]: Math.max(0, Number(e.target.value) || 0),
-                      })
-                    }
-                    className="w-14 rounded-lg border border-border px-1 py-1.5 text-center text-sm"
-                    placeholder="0"
-                  />
-                  <button
-                    type="button"
-                    className="h-8 w-8 rounded-lg border border-border text-lg font-semibold"
-                    onClick={() =>
-                      setQtyByProduct({
-                        ...qtyByProduct,
-                        [p.id]: qty + 1,
-                      })
-                    }
-                  >
-                    +
-                  </button>
-                </div>
+                <QtyStepper
+                  value={qty}
+                  label={`${p.sku} ${p.name}`}
+                  onChange={(next) =>
+                    setQtyByProduct({ ...qtyByProduct, [p.id]: next })
+                  }
+                />
               </div>
             );
           })}
@@ -203,14 +191,11 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
 
       {selected.length > 0 ? (
         <Card>
-          <p className="mb-2 text-sm font-semibold">
-            Resumen · {selected.reduce((s, l) => s + l.qty, 0)} unidades
-          </p>
+          <p className="mb-2 text-sm font-semibold text-ink">Resumen del pedido</p>
           {selected.map((l) => (
             <div key={l.product.id} className="flex justify-between text-sm">
-              <span>
-                {l.qty}× {l.product.sku}
-              </span>
+              <span>{l.product.sku}</span>
+              <span className="tabular-nums">+{l.qty}</span>
             </div>
           ))}
         </Card>
@@ -218,9 +203,28 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
 
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Guardando..." : "Registrar importación"}
-      </Button>
+      <StickyBar>
+        <div className="mb-2 flex items-end justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+              {selected.length === 0
+                ? "Sin productos"
+                : `${selected.length} ${selected.length === 1 ? "producto" : "productos"}`}
+            </p>
+            <p className="text-2xl font-semibold tabular-nums text-ink">
+              {totalUnits} uds
+            </p>
+          </div>
+        </div>
+        <Button
+          type="submit"
+          variant="gold"
+          className="w-full"
+          loading={loading}
+        >
+          {loading ? "Guardando…" : "Registrar importación"}
+        </Button>
+      </StickyBar>
     </form>
   );
 }

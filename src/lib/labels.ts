@@ -30,7 +30,7 @@ export function movementLabel(type: MovementType): string {
     SALIDA: "Salida",
     AJUSTE: "Ajuste",
     RESERVA: "Reserva",
-    LIBERACION_RESERVA: "Liberación",
+    LIBERACION_RESERVA: "Reserva liberada",
     CONFIRMACION_VENTA: "Venta confirmada",
   };
   return map[type];
@@ -39,15 +39,23 @@ export function movementLabel(type: MovementType): string {
 export function movementTone(
   type: MovementType
 ): "neutral" | "gold" | "success" | "danger" | "warn" {
-  if (type === "ENTRADA" || type === "LIBERACION_RESERVA") return "success";
-  if (type === "SALIDA" || type === "CONFIRMACION_VENTA") return "danger";
+  // Una venta confirmada es el mejor evento del negocio: va en verde,
+  // aunque el stock baje. El signo − ya comunica la salida.
+  if (
+    type === "ENTRADA" ||
+    type === "LIBERACION_RESERVA" ||
+    type === "CONFIRMACION_VENTA"
+  ) {
+    return "success";
+  }
+  if (type === "SALIDA") return "danger";
   if (type === "RESERVA") return "gold";
   return "warn";
 }
 
 export function importStatusLabel(status: ImportStatus): string {
   const map: Record<ImportStatus, string> = {
-    ORDERED: "Pedido",
+    ORDERED: "Encargado",
     IN_TRANSIT: "En tránsito",
     ARRIVED: "Llegó",
     CANCELLED: "Cancelado",

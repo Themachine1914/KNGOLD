@@ -2,9 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Card, Input, Label } from "./ui";
+import { Badge, Button, Card, Input, Label, Money, StickyBar } from "./ui";
+import { QtyStepper } from "./qty-stepper";
 import { ProductThumb } from "./product-thumb";
 import { calcQuoteTotals, formatRD } from "@/lib/pricing";
+import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 
 type ProductOpt = {
   id: string;
@@ -46,6 +48,7 @@ export function NewQuoteForm({ products }: { products: ProductOpt[] }) {
     selectedLines.map((l) => l.lineTotal),
     includeItbis
   );
+  const totalUnits = selectedLines.reduce((s, l) => s + l.qty, 0);
 
   const filtered = products.filter((p) => {
     const q = filter.toLowerCase();
@@ -60,37 +63,49 @@ export function NewQuoteForm({ products }: { products: ProductOpt[] }) {
   async function submit() {
     setLoading(true);
     setError("");
-    const res = await fetch("/api/quotes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customer,
-        includeItbis,
-        lines: selectedLines.map((l) => ({
-          productId: l.product.id,
-          qty: l.qty,
-        })),
-      }),
-    });
-    const data = await res.json();
-    setLoading(false);
-    if (!res.ok) {
-      setError(data.error || "No se pudo crear la cotización");
-      return;
+    try {
+      const res = await fetch("/api/quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customer,
+          includeItbis,
+          lines: selectedLines.map((l) => ({
+            productId: l.product.id,
+            qty: l.qty,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "No se pudo crear la cotización");
+        return;
+      }
+      router.push(`/quotes/${data.quote.id}`);
+      router.refresh();
+    } catch {
+      setError("Sin conexión. Revisa el internet e intenta de nuevo.");
+    } finally {
+      setLoading(false);
     }
-    router.push(`/quotes/${data.quote.id}`);
-    router.refresh();
   }
+
+  const steps = ["Cliente", "Productos", "Resumen"];
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        {[1, 2, 3].map((n) => (
-          <div
-            key={n}
-            className={`h-1.5 flex-1 rounded-full ${step >= n ? "bg-ink" : "bg-border"}`}
-          />
-        ))}
+      <div>
+        <div className="flex gap-2">
+          {[1, 2, 3].map((n) => (
+            <div
+              key={n}
+              className={`h-1.5 flex-1 rounded-full ${step >= n ? "bg-gold" : "bg-border"}`}
+            />
+          ))}
+        </div>
+        <p className="mt-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+          Paso {step} de 3 · {steps[step - 1]}
+        </p>
       </div>
 
       {step === 1 ? (
@@ -110,6 +125,7 @@ export function NewQuoteForm({ products }: { products: ProductOpt[] }) {
             <Label htmlFor="rnc">RNC (opcional)</Label>
             <Input
               id="rnc"
+              inputMode="numeric"
               value={customer.rnc}
               onChange={(e) => setCustomer({ ...customer, rnc: e.target.value })}
             />
@@ -118,6 +134,8 @@ export function NewQuoteForm({ products }: { products: ProductOpt[] }) {
             <Label htmlFor="phone">Teléfono</Label>
             <Input
               id="phone"
+              type="tel"
+              inputMode="tel"
               value={customer.phone}
               onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
             />
@@ -132,6 +150,7 @@ export function NewQuoteForm({ products }: { products: ProductOpt[] }) {
           </div>
           <Button
             type="button"
+            variant="gold"
             className="w-full"
             disabled={!customer.name.trim()}
             onClick={() => setStep(2)}
@@ -142,76 +161,106 @@ export function NewQuoteForm({ products }: { products: ProductOpt[] }) {
       ) : null}
 
       {step === 2 ? (
-        <div className="space-y-3">
+        <div className="space-y-3 pb-28">
           <Input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Buscar producto..."
+            aria-label="Buscar producto"
           />
           <div className="space-y-2">
             {filtered.map((p) => {
               const qty = qtyByProduct[p.id] || 0;
+              const atMax = qty >= p.available;
               return (
                 <Card key={p.id} className="py-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <ProductThumb sku={p.sku} alt={p.name} size="sm" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-gold-dark">
-                          {p.type} · {p.sku}
-                        </p>
-                        <p className="font-semibold">{p.name}</p>
-                        <p className="text-sm text-muted">
-                          {formatRD(p.netPrice)} · Disp. {p.available}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="h-9 w-9 rounded-lg border border-border bg-white text-lg font-semibold"
-                        onClick={() =>
-                          setQtyByProduct({
-                            ...qtyByProduct,
-                            [p.id]: Math.max(0, qty - 1),
-                          })
-                        }
-                      >
-                        −
-                      </button>
-                      <span className="w-6 text-center font-semibold">{qty}</span>
-                      <button
-                        type="button"
-                        className="h-9 w-9 rounded-lg border border-border bg-white text-lg font-semibold disabled:opacity-40"
-                        disabled={qty >= p.available}
-                        onClick={() =>
-                          setQtyByProduct({
-                            ...qtyByProduct,
-                            [p.id]: Math.min(p.available, qty + 1),
-                          })
-                        }
-                      >
-                        +
-                      </button>
+                  <div className="flex items-start gap-3">
+                    <ProductThumb sku={p.sku} alt={p.name} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold uppercase tracking-wide text-muted">
+                        {p.type} · {p.sku}
+                      </p>
+                      <p className="font-semibold text-ink">{p.name}</p>
                     </div>
                   </div>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold tabular-nums text-ink">
+                        {formatRD(p.netPrice)}
+                      </p>
+                      <Badge
+                        className="mt-1"
+                        tone={
+                          p.available <= 0
+                            ? "danger"
+                            : p.available <= LOW_STOCK_THRESHOLD
+                              ? "warn"
+                              : "success"
+                        }
+                      >
+                        Disp. {p.available}
+                      </Badge>
+                    </div>
+                    <QtyStepper
+                      value={qty}
+                      max={p.available}
+                      label={`${p.sku} ${p.name}`}
+                      onChange={(next) =>
+                        setQtyByProduct({ ...qtyByProduct, [p.id]: next })
+                      }
+                    />
+                  </div>
+                  {atMax && p.available > 0 ? (
+                    <p className="mt-2 text-xs font-semibold text-warn">
+                      Es todo lo disponible: {p.available}
+                    </p>
+                  ) : null}
+                  {p.available <= 0 ? (
+                    <p className="mt-2 text-xs font-semibold text-danger">
+                      Sin disponible para cotizar
+                    </p>
+                  ) : null}
                 </Card>
               );
             })}
           </div>
-          <div className="flex gap-2">
-            <Button type="button" variant="secondary" className="flex-1" onClick={() => setStep(1)}>
-              Atrás
-            </Button>
-            <Button
-              type="button"
-              className="flex-1"
-              disabled={selectedLines.length === 0}
-              onClick={() => setStep(3)}
-            >
-              ITBIS y resumen
-            </Button>
-          </div>
+
+          <StickyBar>
+            <div className="mb-2 flex items-end justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  {selectedLines.length === 0
+                    ? "Sin productos"
+                    : `${totalUnits} uds · ${selectedLines.length} ${
+                        selectedLines.length === 1 ? "producto" : "productos"
+                      }`}
+                </p>
+                <Money amount={totals.total} size="strong" />
+              </div>
+              <p className="pb-1 text-xs text-muted">
+                {includeItbis ? "Con ITBIS" : "Sin ITBIS"}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                className="flex-1"
+                onClick={() => setStep(1)}
+              >
+                Atrás
+              </Button>
+              <Button
+                type="button"
+                variant="gold"
+                className="flex-1"
+                disabled={selectedLines.length === 0}
+                onClick={() => setStep(3)}
+              >
+                Continuar
+              </Button>
+            </div>
+          </StickyBar>
         </div>
       ) : null}
 
@@ -219,21 +268,27 @@ export function NewQuoteForm({ products }: { products: ProductOpt[] }) {
         <div className="space-y-3">
           <Card>
             <p className="mb-3 font-semibold">¿Factura con ITBIS?</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2" role="group">
               <button
                 type="button"
+                aria-pressed={includeItbis}
                 onClick={() => setIncludeItbis(true)}
-                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
-                  includeItbis ? "border-ink bg-ink text-white" : "border-border bg-white"
+                className={`min-h-11 rounded-xl border px-3 py-3 text-sm font-semibold ${
+                  includeItbis
+                    ? "border-ink bg-ink text-white"
+                    : "border-border bg-white text-ink"
                 }`}
               >
                 Con ITBIS 18%
               </button>
               <button
                 type="button"
+                aria-pressed={!includeItbis}
                 onClick={() => setIncludeItbis(false)}
-                className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
-                  !includeItbis ? "border-ink bg-ink text-white" : "border-border bg-white"
+                className={`min-h-11 rounded-xl border px-3 py-3 text-sm font-semibold ${
+                  !includeItbis
+                    ? "border-ink bg-ink text-white"
+                    : "border-border bg-white text-ink"
                 }`}
               >
                 Sin ITBIS
@@ -242,28 +297,30 @@ export function NewQuoteForm({ products }: { products: ProductOpt[] }) {
           </Card>
 
           <Card className="space-y-2">
-            <p className="font-semibold">{customer.name}</p>
+            <p className="font-semibold text-ink">{customer.name}</p>
             {selectedLines.map((l) => (
               <div key={l.product.id} className="flex justify-between text-sm">
                 <span>
-                  {l.qty}× {l.product.sku}
+                  <span className="tabular-nums">{l.qty}</span>× {l.product.sku}
                 </span>
-                <span>{formatRD(l.lineTotal)}</span>
+                <span className="tabular-nums">{formatRD(l.lineTotal)}</span>
               </div>
             ))}
-            <div className="border-t border-border pt-2 text-sm">
+            <div className="space-y-1 border-t border-border pt-2 text-sm">
               <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>{formatRD(totals.subtotal)}</span>
+                <span className="text-muted">Subtotal</span>
+                <span className="tabular-nums">{formatRD(totals.subtotal)}</span>
               </div>
               <div className="flex justify-between">
-                <span>ITBIS (18%)</span>
-                <span>{formatRD(totals.itbisAmount)}</span>
+                <span className="text-muted">ITBIS (18%)</span>
+                <span className="tabular-nums">{formatRD(totals.itbisAmount)}</span>
               </div>
-              <div className="mt-1 flex justify-between text-base font-semibold">
-                <span>Total</span>
-                <span>{formatRD(totals.total)}</span>
-              </div>
+            </div>
+            <div className="flex items-end justify-between border-t border-border pt-2">
+              <span className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+                Total
+              </span>
+              <Money amount={totals.total} size="hero" />
             </div>
             <p className="text-xs text-muted">
               Al confirmar se reserva el inventario por 48 horas.
@@ -273,11 +330,22 @@ export function NewQuoteForm({ products }: { products: ProductOpt[] }) {
           {error ? <p className="text-sm text-danger">{error}</p> : null}
 
           <div className="flex gap-2">
-            <Button type="button" variant="secondary" className="flex-1" onClick={() => setStep(2)}>
+            <Button
+              type="button"
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setStep(2)}
+            >
               Atrás
             </Button>
-            <Button type="button" className="flex-1" disabled={loading} onClick={submit}>
-              {loading ? "Reservando..." : "Reservar stock"}
+            <Button
+              type="button"
+              variant="gold"
+              className="flex-1"
+              loading={loading}
+              onClick={submit}
+            >
+              {loading ? "Reservando…" : "Reservar stock"}
             </Button>
           </div>
         </div>

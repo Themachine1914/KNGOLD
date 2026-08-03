@@ -85,16 +85,37 @@ export default async function ImportDetailPage({
                   <p className="font-semibold">
                     {line.product.sku} · {line.product.name}
                   </p>
-                  <p className="text-sm text-muted">Stock actual {line.product.stockOnHand}</p>
+                  <p className="text-sm text-muted">
+                    {order.status === "ARRIVED" ? (
+                      <>
+                        Físico{" "}
+                        <span className="tabular-nums">{line.product.stockOnHand}</span>
+                      </>
+                    ) : (
+                      <>
+                        Físico{" "}
+                        <span className="tabular-nums">{line.product.stockOnHand}</span>{" "}
+                        → al llegar{" "}
+                        <span className="font-semibold tabular-nums text-ink">
+                          {line.product.stockOnHand + line.qty}
+                        </span>
+                      </>
+                    )}
+                  </p>
                 </div>
               </div>
-              <p className="text-lg font-bold shrink-0">+{line.qty}</p>
+              <p className="shrink-0 text-lg font-semibold tabular-nums">+{line.qty}</p>
             </div>
           ))}
         </Card>
 
         {isOwner ? (
-          <ImportActions importId={order.id} status={order.status} />
+          <ImportActions
+            importId={order.id}
+            status={order.status}
+            units={units}
+            productCount={order.lines.length}
+          />
         ) : null}
 
         <Link href="/imports" className="block text-center text-sm font-semibold text-muted">

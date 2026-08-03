@@ -27,7 +27,6 @@
   --color-danger: var(--danger);
   --color-warn: var(--warn);
   --font-sans: var(--font-display);
-  --font-mono: var(--font-geist-mono);
 }
 
 body {

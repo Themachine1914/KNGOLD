@@ -5,10 +5,10 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatRD } from "@/lib/pricing";
 import { quoteStatusLabel, quoteStatusTone } from "@/lib/labels";
-import { Badge, Button, Card, PageHeader } from "@/components/ui";
+import { Badge, Button, Card, Money, PageHeader } from "@/components/ui";
 import { QuoteActions } from "@/components/quote-actions";
 import { ProductThumb } from "@/components/product-thumb";
-import { format } from "date-fns";
+import { format, formatDistanceToNow, isPast } from "date-fns";
 import { es } from "date-fns/locale";
 
 export default async function QuoteDetailPage({
@@ -36,6 +36,9 @@ export default async function QuoteDetailPage({
     notFound();
   }
 
+  const units = quote.lines.reduce((s, l) => s + l.qty, 0);
+  const reserveExpired = quote.reservedUntil ? isPast(quote.reservedUntil) : false;
+
   return (
     <div>
       <PageHeader
@@ -45,6 +48,30 @@ export default async function QuoteDetailPage({
       />
 
       <div className="space-y-3">
+        {quote.reservedUntil && quote.status === "RESERVED" ? (
+          <Card
+            className={`flex items-center justify-between gap-3 py-3 ${
+              reserveExpired ? "border-danger/40" : "border-warn/40"
+            }`}
+          >
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Reserva de stock
+              </p>
+              <p className="mt-0.5 font-semibold text-ink">
+                {reserveExpired ? "Ya venció" : "Vence"}{" "}
+                {formatDistanceToNow(quote.reservedUntil, {
+                  addSuffix: true,
+                  locale: es,
+                })}
+              </p>
+            </div>
+            <Badge tone={reserveExpired ? "danger" : "warn"}>
+              {format(quote.reservedUntil, "dd MMM HH:mm", { locale: es })}
+            </Badge>
+          </Card>
+        ) : null}
+
         <Card className="space-y-1 text-sm">
           <p>
             <span className="text-muted">Vendedor:</span> {quote.seller.name}
@@ -63,12 +90,6 @@ export default async function QuoteDetailPage({
             <span className="text-muted">Creada:</span>{" "}
             {format(quote.createdAt, "dd MMM yyyy HH:mm", { locale: es })}
           </p>
-          {quote.reservedUntil && quote.status === "RESERVED" ? (
-            <p>
-              <span className="text-muted">Reserva hasta:</span>{" "}
-              {format(quote.reservedUntil, "dd MMM HH:mm", { locale: es })}
-            </p>
-          ) : null}
           <p>
             <span className="text-muted">ITBIS:</span>{" "}
             {quote.includeItbis ? "Incluido (18%)" : "No aplica"}
@@ -85,36 +106,52 @@ export default async function QuoteDetailPage({
                     {line.product.sku} · {line.product.name}
                   </p>
                   <p className="text-sm text-muted">
-                    {line.qty} × {formatRD(line.unitPrice)}
+                    <span className="tabular-nums">{line.qty}</span> ×{" "}
+                    <span className="tabular-nums">{formatRD(line.unitPrice)}</span>
                   </p>
                 </div>
               </div>
-              <p className="font-semibold shrink-0">{formatRD(line.lineTotal)}</p>
+              <p className="shrink-0 font-semibold tabular-nums">
+                {formatRD(line.lineTotal)}
+              </p>
             </div>
           ))}
           <div className="space-y-1 border-t border-border pt-2 text-sm">
             <div className="flex justify-between">
-              <span>Subtotal</span>
-              <span>{formatRD(quote.subtotal)}</span>
+              <span className="text-muted">Subtotal</span>
+              <span className="tabular-nums">{formatRD(quote.subtotal)}</span>
             </div>
             <div className="flex justify-between">
-              <span>ITBIS</span>
-              <span>{formatRD(quote.itbisAmount)}</span>
+              <span className="text-muted">ITBIS</span>
+              <span className="tabular-nums">{formatRD(quote.itbisAmount)}</span>
             </div>
-            <div className="flex justify-between text-base font-semibold">
-              <span>Total</span>
-              <span>{formatRD(quote.total)}</span>
-            </div>
+          </div>
+          <div className="flex items-end justify-between border-t border-border pt-2">
+            <span className="pb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+              Total
+            </span>
+            <Money amount={quote.total} size="hero" />
           </div>
         </Card>
 
-        <QuoteActions quoteId={quote.id} status={quote.status} />
-
-        <a href={`/api/quotes/${quote.id}/pdf`} target="_blank" rel="noreferrer">
+        <a
+          href={`/api/quotes/${quote.id}/pdf`}
+          target="_blank"
+          rel="noreferrer"
+          className="block"
+        >
           <Button variant="secondary" className="w-full">
             Descargar / compartir PDF
           </Button>
         </a>
+
+        <QuoteActions
+          quoteId={quote.id}
+          status={quote.status}
+          units={units}
+          productCount={quote.lines.length}
+          total={quote.total}
+        />
 
         <Link href="/quotes" className="block text-center text-sm font-semibold text-muted">
           Volver a cotizaciones

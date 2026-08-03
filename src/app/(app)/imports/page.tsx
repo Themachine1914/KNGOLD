@@ -27,7 +27,7 @@ export default async function ImportsPage() {
         action={
           isOwner ? (
             <Link href="/imports/new">
-              <Button className="px-3 py-2 text-xs">Nueva</Button>
+              <Button variant="gold">Nueva</Button>
             </Link>
           ) : null
         }
@@ -37,6 +37,13 @@ export default async function ImportsPage() {
         <EmptyState
           title="Sin pedidos de importación"
           body={isOwner ? "Registra el próximo contenedor o pedido." : undefined}
+          action={
+            isOwner ? (
+              <Link href="/imports/new">
+                <Button variant="gold">Nueva importación</Button>
+              </Link>
+            ) : undefined
+          }
         />
       ) : (
         <div className="space-y-2">
@@ -49,18 +56,19 @@ export default async function ImportsPage() {
               isPast(item.eta);
 
             return (
-              <Link key={item.id} href={`/imports/${item.id}`}>
-                <Card className="mb-2 py-3">
+              <Link key={item.id} href={`/imports/${item.id}`} className="block">
+                <Card className="py-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold">
+                      <p className="font-semibold text-ink">
                         Pedido #{item.number}
                         {item.supplier ? ` · ${item.supplier}` : ""}
                       </p>
                       <p className="text-sm text-muted">
-                        {item.lines.length} productos · {units} unidades
+                        {item.lines.length} productos ·{" "}
+                        <span className="tabular-nums">{units}</span> unidades
                       </p>
-                      <p className="mt-1 text-sm font-semibold text-ink">
+                      <p className="mt-1 text-base font-semibold text-ink">
                         ETA{" "}
                         {format(item.eta, "dd MMM yyyy", { locale: es })}
                         {item.status !== "ARRIVED" &&
