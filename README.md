@@ -22,10 +22,22 @@ App para que el dueño y los vendedores de **KN GOLD** controlen inventario, cot
 
 ```bash
 npm install
+# Necesitas Postgres (Neon). En .env:
+# DATABASE_URL="postgresql://..."
 npx prisma db push
 npm run db:seed
 npm run dev
 ```
+
+## Deploy en Vercel
+
+1. Crea una base **Neon** gratis: [https://console.neon.tech](https://console.neon.tech) → copia `DATABASE_URL`
+2. Importa el repo en [https://vercel.com/new](https://vercel.com/new) → `Themachine1914/KNGOLD`
+3. Variables de entorno en Vercel:
+   - `DATABASE_URL` = connection string de Neon
+   - `AUTH_SECRET` = secreto largo (ej. genera con `openssl rand -base64 32`)
+   - `AUTH_URL` = `https://TU-PROYECTO.vercel.app` (la pones tras el primer deploy si hace falta)
+4. Deploy. El build corre `prisma db push` + seed automáticamente.
 
 ## Go (API nueva)
 

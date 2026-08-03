@@ -185,7 +185,7 @@ async function main() {
         listPrice: p.listPrice,
         discountPct: p.discountPct,
         netPrice: p.netPrice,
-        stockOnHand: p.stockOnHand,
+        // no sobrescribir stock en redeploys
       },
       create: p,
     });
