@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicErrorMessage } from "@/lib/api-error";
 import { auth } from "@/lib/auth";
 import { cancelImportOrder } from "@/lib/imports";
 
@@ -16,9 +17,7 @@ export async function POST(
     const order = await cancelImportOrder(id);
     return NextResponse.json({ ok: true, import: order });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Error" },
-      { status: 400 }
-    );
+    const { message, status } = publicErrorMessage(e);
+    return NextResponse.json({ error: message }, { status });
   }
 }

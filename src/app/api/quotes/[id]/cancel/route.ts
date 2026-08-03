@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicErrorMessage } from "@/lib/api-error";
 import { auth } from "@/lib/auth";
 import { cancelQuote, getQuote } from "@/lib/inventory";
 
@@ -24,9 +25,7 @@ export async function POST(
     await cancelQuote(id, session.user.id);
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Error" },
-      { status: 400 }
-    );
+    const { message, status } = publicErrorMessage(e);
+    return NextResponse.json({ error: message }, { status });
   }
 }

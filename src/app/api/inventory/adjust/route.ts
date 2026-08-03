@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { adjustStock } from "@/lib/inventory";
+import { adjustInputSchema, firstIssue } from "@/lib/validation";
+import { publicErrorMessage } from "@/lib/api-error";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -12,27 +14,19 @@ export async function POST(req: Request) {
   }
 
   try {
-    const body = await req.json();
-    const productId = String(body.productId || "");
-    const qtyDelta = Number(body.qtyDelta);
-    const note = body.note ? String(body.note) : undefined;
-
-    if (!productId || !Number.isFinite(qtyDelta) || qtyDelta === 0) {
-      return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
+    const parsed = adjustInputSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
 
     await adjustStock({
-      productId,
-      qtyDelta,
+      ...parsed.data,
       userId: session.user.id,
-      note,
     });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Error" },
-      { status: 400 }
-    );
+    const { message, status } = publicErrorMessage(e);
+    return NextResponse.json({ error: message }, { status });
   }
 }

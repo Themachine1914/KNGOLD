@@ -1,7 +1,9 @@
+import Form from "next/form";
+import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getProductsWithAvailability } from "@/lib/inventory";
 import { formatRD } from "@/lib/pricing";
-import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
+import { Badge, Button, Card, EmptyState, Input, PageHeader } from "@/components/ui";
 import { AdjustStockForm } from "@/components/adjust-stock-form";
 import { ProductThumb } from "@/components/product-thumb";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
@@ -17,7 +19,8 @@ export default async function InventoryPage({
   const q = (params.q || "").toLowerCase().trim();
   const type = params.type || "";
 
-  let products = await getProductsWithAvailability();
+  const all = await getProductsWithAvailability();
+  let products = all;
   if (type) products = products.filter((p) => p.type === type);
   if (q) {
     products = products.filter(
@@ -28,7 +31,9 @@ export default async function InventoryPage({
     );
   }
 
-  const types = Array.from(new Set(products.map((p) => p.type)));
+  // Los tipos salen del catálogo completo: si salieran de la lista filtrada,
+  // al elegir un tipo desaparecerían los demás chips.
+  const types = Array.from(new Set(all.map((p) => p.type)));
 
   return (
     <div>
@@ -41,99 +46,129 @@ export default async function InventoryPage({
         }
       />
 
-      <form className="mb-3 flex gap-2">
-        <input
+      <Form action="/inventory" className="mb-3 flex gap-2">
+        {/* Sin esto, buscar borraba el filtro de tipo activo. */}
+        {type ? <input type="hidden" name="type" value={type} /> : null}
+        <Input
           name="q"
           defaultValue={params.q}
           placeholder="Buscar SKU o nombre..."
-          className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm outline-none ring-gold/30 focus:ring-2"
+          aria-label="Buscar producto por SKU o nombre"
         />
-        <button type="submit" className="rounded-xl bg-ink px-4 text-sm font-semibold text-white">
+        <Button type="submit" className="shrink-0">
           Buscar
-        </button>
-      </form>
+        </Button>
+      </Form>
 
       <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-        <a
+        <Link
           href="/inventory"
-          className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${
-            !type ? "bg-ink text-white" : "bg-white text-muted border border-border"
+          className={`whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-semibold ${
+            !type ? "bg-ink text-white" : "border border-border bg-white text-muted"
           }`}
         >
           Todos
-        </a>
+        </Link>
         {types.map((t) => (
-          <a
+          <Link
             key={t}
             href={`/inventory?type=${encodeURIComponent(t)}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
-            className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${
-              type === t ? "bg-ink text-white" : "bg-white text-muted border border-border"
+            className={`whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-semibold ${
+              type === t ? "bg-ink text-white" : "border border-border bg-white text-muted"
             }`}
           >
             {t}
-          </a>
+          </Link>
         ))}
       </div>
 
       {products.length === 0 ? (
-        <EmptyState title="Sin productos" body="Prueba otra búsqueda." />
+        <EmptyState
+          title="Sin productos"
+          body="Ninguno coincide con esa búsqueda."
+          action={
+            q || type ? (
+              <Link href="/inventory">
+                <Button variant="secondary">Ver todo el inventario</Button>
+              </Link>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="space-y-3">
-          {products.map((p) => (
-            <Card key={p.id}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
-                  <ProductThumb sku={p.sku} alt={p.name} />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">
-                      {p.type} · {p.sku}
-                    </p>
-                    <p className="mt-0.5 font-semibold text-ink">{p.name}</p>
-                    <p className="text-sm text-muted">
-                      {[p.description, p.color].filter(Boolean).join(" · ")}
-                    </p>
-                    <p className="mt-1 text-sm font-semibold">{formatRD(p.netPrice)}</p>
+          {products.map((p) => {
+            const available = p.available ?? 0;
+            return (
+              <Card key={p.id}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <ProductThumb sku={p.sku} alt={p.name} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold uppercase tracking-wide text-muted">
+                        {p.type} · {p.sku}
+                      </p>
+                      <p className="mt-0.5 text-base font-semibold text-ink">{p.name}</p>
+                      <p className="text-sm text-muted">
+                        {[p.description, p.color].filter(Boolean).join(" · ")}
+                      </p>
+                      <p className="mt-1 text-base font-semibold tabular-nums text-ink">
+                        {formatRD(p.netPrice)}
+                      </p>
+                    </div>
                   </div>
+                  <Badge
+                    tone={
+                      available <= 0
+                        ? "danger"
+                        : available <= LOW_STOCK_THRESHOLD
+                          ? "warn"
+                          : "success"
+                    }
+                  >
+                    Disp. {available}
+                  </Badge>
                 </div>
-                <Badge
-                  tone={
-                    (p.available ?? 0) <= 0
-                      ? "danger"
-                      : (p.available ?? 0) <= LOW_STOCK_THRESHOLD
-                        ? "warn"
-                        : "success"
-                  }
-                >
-                  Disp. {p.available}
-                </Badge>
-              </div>
 
-              {isOwner ? (
-                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center text-xs">
-                  <div>
-                    <p className="text-muted">Físico</p>
-                    <p className="font-semibold">{p.stockOnHand}</p>
+                {isOwner ? (
+                  <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                        Físico
+                      </p>
+                      <p className="text-2xl font-semibold tabular-nums text-ink">
+                        {p.stockOnHand}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                        Reservado
+                      </p>
+                      <p className="text-2xl font-semibold tabular-nums text-gold-dark">
+                        {p.reserved ?? 0}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                        Disponible
+                      </p>
+                      <p className="text-2xl font-semibold tabular-nums text-success">
+                        {available}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-muted">Reservado</p>
-                    <p className="font-semibold text-gold-dark">{p.reserved}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted">Disponible</p>
-                    <p className="font-semibold text-success">{p.available}</p>
-                  </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              {isOwner ? (
-                <AdjustStockForm
-                  productId={p.id}
-                  sku={p.sku}
-                  stockOnHand={p.stockOnHand}
-                />
-              ) : null}
-            </Card>
-          ))}
+                {isOwner ? (
+                  <AdjustStockForm
+                    productId={p.id}
+                    sku={p.sku}
+                    stockOnHand={p.stockOnHand}
+                    reserved={p.reserved ?? 0}
+                  />
+                ) : null}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
