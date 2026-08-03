@@ -4,11 +4,10 @@ import { auth } from "@/lib/auth";
 import { getQuote } from "@/lib/inventory";
 import { formatRD } from "@/lib/pricing";
 import { quoteStatusLabel, quoteStatusTone } from "@/lib/labels";
-import { Badge, Button, Card, Money, PageHeader } from "@/components/ui";
+import { Badge, Card, Money, PageHeader } from "@/components/ui";
 import { QuoteActions } from "@/components/quote-actions";
 import { ProductThumb } from "@/components/product-thumb";
-import { format, formatDistanceToNow, isPast, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
+import { fmtDate, fmtRelative, isExpired, toDate } from "@/lib/dates";
 
 export default async function QuoteDetailPage({
   params,
@@ -23,6 +22,9 @@ export default async function QuoteDetailPage({
     notFound();
   }
 
+  const reservaVence = toDate(quote.reservedUntil);
+  const reservaVencida = isExpired(quote.reservedUntil);
+
   return (
     <div>
       <PageHeader
@@ -32,10 +34,10 @@ export default async function QuoteDetailPage({
       />
 
       <div className="space-y-3">
-        {quote.reservedUntil && quote.status === "RESERVED" ? (
+        {reservaVence && quote.status === "RESERVED" ? (
           <Card
             className={`flex items-center justify-between gap-3 py-3 ${
-              isPast(parseISO(quote.reservedUntil)) ? "border-danger/40" : "border-warn/40"
+              reservaVencida ? "border-danger/40" : "border-warn/40"
             }`}
           >
             <div>
@@ -43,15 +45,12 @@ export default async function QuoteDetailPage({
                 Reserva de stock
               </p>
               <p className="mt-0.5 font-semibold text-ink">
-                {isPast(parseISO(quote.reservedUntil)) ? "Ya venció" : "Vence"}{" "}
-                {formatDistanceToNow(parseISO(quote.reservedUntil), {
-                  addSuffix: true,
-                  locale: es,
-                })}
+                {reservaVencida ? "Ya venció" : "Vence"}{" "}
+{fmtRelative(quote.reservedUntil)}
               </p>
             </div>
-            <Badge tone={isPast(parseISO(quote.reservedUntil)) ? "danger" : "warn"}>
-              {format(parseISO(quote.reservedUntil), "dd MMM HH:mm", { locale: es })}
+            <Badge tone={reservaVencida ? "danger" : "warn"}>
+              {fmtDate(quote.reservedUntil, "dd MMM HH:mm")}
             </Badge>
           </Card>
         ) : null}
@@ -62,7 +61,7 @@ export default async function QuoteDetailPage({
           {quote.customer?.phone ? <p><span className="text-muted">Tel:</span> {quote.customer.phone}</p> : null}
           <p>
             <span className="text-muted">Creada:</span>{" "}
-            {format(parseISO(quote.createdAt), "dd MMM yyyy HH:mm", { locale: es })}
+            {fmtDate(quote.createdAt, "dd MMM yyyy HH:mm")}
           </p>
           <p>
             <span className="text-muted">ITBIS:</span>{" "}
@@ -71,8 +70,8 @@ export default async function QuoteDetailPage({
         </Card>
 
         <Card className="space-y-2">
-          {(quote.lines || []).map((line) => (
-            <div key={line.id} className="flex justify-between gap-2 border-b border-border pb-2 last:border-0 last:pb-0">
+          {(quote.lines || []).map((line, i) => (
+            <div key={line.id ?? `${line.productId}-${i}`} className="flex justify-between gap-2 border-b border-border pb-2 last:border-0 last:pb-0">
               <div className="flex items-start gap-3 min-w-0">
                 <ProductThumb sku={line.product?.sku || "?"} alt={line.product?.name || ""} size="sm" />
                 <div className="min-w-0">
@@ -110,11 +109,9 @@ export default async function QuoteDetailPage({
           href={`/api/quotes/${quote.id}/pdf`}
           target="_blank"
           rel="noreferrer"
-          className="block"
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-border bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:bg-border/30"
         >
-          <Button variant="secondary" className="w-full">
-            Descargar / compartir PDF
-          </Button>
+          Descargar / compartir PDF
         </a>
 
         <QuoteActions

@@ -20,7 +20,9 @@ export async function POST(req: Request) {
     }
     const { eta: etaRaw, ...rest } = parsed.data;
 
-    const eta = new Date(`${etaRaw}T12:00:00`);
+    // Con la Z el ancla es UTC. Sin ella se interpretaba en la zona del
+    // servidor (UTC en Vercel, UTC-4 aquí) y la ETA se corría un día.
+    const eta = new Date(`${etaRaw}T12:00:00Z`);
     if (Number.isNaN(eta.getTime())) {
       return NextResponse.json({ error: "Fecha inválida" }, { status: 400 });
     }

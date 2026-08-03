@@ -12,12 +12,13 @@ import { z } from "zod";
 const optionalText = (max: number) =>
   z
     .string()
-    .max(max)
+    // El trim va ANTES del max: si no, un RNC de 50 caracteres rodeado de
+    // espacios se rechazaba por "demasiado largo", y con el mensaje de zod
+    // en inglés.
+    .trim()
+    .max(max, `Máximo ${max} caracteres.`)
     .optional()
-    .transform((v) => {
-      const trimmed = v?.trim();
-      return trimmed ? trimmed : undefined;
-    });
+    .transform((v) => (v ? v : undefined));
 
 const qty = z
   .number({ error: "Falta la cantidad, o no es un número." })
@@ -47,7 +48,15 @@ export const quoteInputSchema = z.object({
 export const importInputSchema = z.object({
   supplier: optionalText(200),
   /** El formulario manda YYYY-MM-DD; la hora la fija la ruta. */
-  eta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida."),
+  eta: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida.")
+    // El regex acepta "2026-02-31", y `new Date` lo convierte en el 3 de
+    // marzo en vez de fallar: la ETA se guardaba en otro día sin avisar.
+    .refine(
+      (v) => new Date(`${v}T12:00:00Z`).toISOString().slice(0, 10) === v,
+      "Esa fecha no existe."
+    ),
   notes: optionalText(500),
   status: z.enum(["ORDERED", "IN_TRANSIT"]).default("ORDERED"),
   lines: z.array(lineSchema).min(1, "Agrega al menos un producto."),

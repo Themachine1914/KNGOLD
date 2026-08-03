@@ -6,7 +6,15 @@ import type { NextConfig } from "next";
  * `unsafe-inline` sigue en script-src porque Next inyecta scripts en línea
  * para hidratar; quitarlo exige nonces y rompe el arranque. style-src lo
  * necesita por los estilos en línea de next/font.
+ *
+ * `unsafe-eval` solo en desarrollo: los docs de esta versión
+ * (02-guides/content-security-policy.md) confirman que en producción no hace
+ * falta, y dejarlo puesto anula buena parte de la defensa contra XSS.
  */
+const scriptSrc =
+  "script-src 'self' 'unsafe-inline'" +
+  (process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "");
+
 const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -21,12 +29,14 @@ const securityHeaders = [
       "default-src 'self'",
       "img-src 'self' data: blob:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      scriptSrc,
       "font-src 'self' data:",
       "connect-src 'self'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
+      "object-src 'none'",
+      "upgrade-insecure-requests",
     ].join("; "),
   },
 ];

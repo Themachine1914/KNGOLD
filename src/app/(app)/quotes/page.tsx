@@ -3,9 +3,8 @@ import { auth } from "@/lib/auth";
 import { expireReservedQuotes, listQuotes } from "@/lib/inventory";
 import { formatRD } from "@/lib/pricing";
 import { quoteStatusLabel, quoteStatusTone } from "@/lib/labels";
-import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui";
-import { format, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
+import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
+import { fmtDate } from "@/lib/dates";
 import type { QuoteStatus } from "@/lib/types";
 
 const FILTERS: { value: "" | QuoteStatus; label: string }[] = [
@@ -39,8 +38,8 @@ export default async function QuotesPage({
         title="Cotizaciones"
         subtitle={isOwner ? "Todas las reservas del equipo." : "Tus cotizaciones y reservas."}
         action={
-          <Link href="/quotes/new">
-            <Button variant="gold">Nueva</Button>
+          <Link href="/quotes/new" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gold px-4 py-3 text-sm font-semibold text-ink transition hover:bg-gold-dark hover:text-white">
+            Nueva
           </Link>
         }
       />
@@ -67,8 +66,8 @@ export default async function QuotesPage({
           title={active ? "Nada en este filtro" : "Aún no hay cotizaciones"}
           body={active ? undefined : "Crea una al visitar un cliente."}
           action={
-            <Link href="/quotes/new">
-              <Button variant="gold">Nueva cotización</Button>
+            <Link href="/quotes/new" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gold px-4 py-3 text-sm font-semibold text-ink transition hover:bg-gold-dark hover:text-white">
+              Nueva cotización
             </Link>
           }
         />
@@ -96,7 +95,7 @@ export default async function QuotesPage({
                       {quoteStatusLabel(q.status)}
                     </Badge>
                     <p className="mt-2 text-sm text-muted">
-                      {format(parseISO(q.createdAt), "dd MMM HH:mm", { locale: es })}
+                      {fmtDate(q.createdAt, "dd MMM HH:mm")}
                     </p>
                   </div>
                 </div>

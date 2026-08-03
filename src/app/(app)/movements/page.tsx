@@ -4,8 +4,7 @@ import { expireReservedQuotes, listMovements, movementDelta } from "@/lib/invent
 import { movementLabel, movementTone } from "@/lib/labels";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { ProductThumb } from "@/components/product-thumb";
-import { format, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
+import { fmtDate } from "@/lib/dates";
 
 export default async function MovementsPage() {
   const session = await auth();
@@ -44,7 +43,7 @@ export default async function MovementsPage() {
                     </p>
                     <p className="text-sm text-muted">
                       {m.user?.name || "Sistema"} ·{" "}
-                      {format(parseISO(m.createdAt), "dd MMM · HH:mm", { locale: es })}
+                      {fmtDate(m.createdAt, "dd MMM · HH:mm")}
                     </p>
                     {m.note ? <p className="mt-1 text-sm text-muted">{m.note}</p> : null}
                   </div>

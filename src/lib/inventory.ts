@@ -530,7 +530,8 @@ export async function listQuotes(sellerId?: string): Promise<Quote[]> {
   const snap = await getDb().collection("quotes").get();
   let quotes = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Quote[];
   if (sellerId) quotes = quotes.filter((q) => q.sellerId === sellerId);
-  quotes.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  // Un documento sin createdAt tumbaba /quotes y /dashboard enteros.
+  quotes.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
 
   for (const q of quotes) {
     const c = await getDb().collection("customers").doc(q.customerId).get();

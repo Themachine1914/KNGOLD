@@ -206,7 +206,7 @@ export async function listImports(): Promise<ImportOrder[]> {
   const snap = await getDb().collection("imports").get();
   const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ImportOrder[];
   list.sort((a, b) => {
-    if (a.status === b.status) return a.eta.localeCompare(b.eta);
+    if (a.status === b.status) return (a.eta ?? "").localeCompare(b.eta ?? "");
     return a.status.localeCompare(b.status);
   });
   for (const item of list) {
@@ -238,7 +238,7 @@ export async function listUpcomingImports(limit = 5): Promise<ImportOrder[]> {
   const all = await listImports();
   return all
     .filter((i) => i.status === "ORDERED" || i.status === "IN_TRANSIT")
-    .sort((a, b) => a.eta.localeCompare(b.eta))
+    .sort((a, b) => (a.eta ?? "").localeCompare(b.eta ?? ""))
     .slice(0, limit);
 }
 

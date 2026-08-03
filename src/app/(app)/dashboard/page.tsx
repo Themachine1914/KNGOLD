@@ -19,8 +19,8 @@ import {
   quoteStatusTone,
 } from "@/lib/labels";
 import { Badge, Card, PageHeader } from "@/components/ui";
-import { differenceInCalendarDays, format, formatDistanceToNow, isPast, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
+import { differenceInCalendarDays, isPast } from "date-fns";
+import { fmtDate, fmtRelative, toDate } from "@/lib/dates";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -110,9 +110,9 @@ export default async function DashboardPage() {
         ) : (
           <div className="space-y-2">
             {upcomingImports.map((item) => {
-              const eta = parseISO(item.eta);
-              const days = differenceInCalendarDays(eta, new Date());
-              const late = isPast(eta);
+              const eta = toDate(item.eta);
+              const days = eta ? differenceInCalendarDays(eta, new Date()) : 0;
+              const late = !!eta && isPast(eta);
               const units = (item.lines || []).reduce((s, l) => s + l.qty, 0);
               return (
                 <Link key={item.id} href={`/imports/${item.id}`} className="block">
@@ -120,7 +120,7 @@ export default async function DashboardPage() {
                     <div>
                       <p className="font-semibold">#{item.number}{item.supplier ? ` · ${item.supplier}` : ""}</p>
                       <p className="text-sm text-muted">
-                        {units} uds · ETA {format(eta, "dd MMM", { locale: es })}
+                        {units} uds · ETA {fmtDate(item.eta, "dd MMM")}
                         <span className={late ? " text-danger" : ""}>
                           {" "}· {late ? `atrasado ${Math.abs(days)}d` : days === 0 ? "hoy" : `en ${days}d`}
                         </span>
@@ -196,7 +196,7 @@ export default async function DashboardPage() {
                       <p className="font-semibold">{m.product?.sku} · {movementLabel(m.type)}</p>
                       <p className="text-sm text-muted">
                         {delta.label} ·{" "}
-                        {formatDistanceToNow(parseISO(m.createdAt), { addSuffix: true, locale: es })}
+                        {fmtRelative(m.createdAt)}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">

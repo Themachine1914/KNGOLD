@@ -46,7 +46,16 @@ async function upsertUser(email: string, name: string, role: "OWNER" | "SELLER",
 }
 
 async function main() {
-  const passwordHash = await bcrypt.hash("kngold2026", 10);
+  // La clave venía escrita aquí y publicada en DEPLOY_VERCEL.md: cualquiera
+  // que desplegara obtenía un dueño con credenciales conocidas.
+  const password = process.env.SEED_OWNER_PASSWORD;
+  if (!password || password.length < 8) {
+    throw new Error(
+      "Define SEED_OWNER_PASSWORD (mínimo 8 caracteres) antes de sembrar. Ejemplo:\n" +
+        '  SEED_OWNER_PASSWORD="tu-clave-segura" npm run db:seed'
+    );
+  }
+  const passwordHash = await bcrypt.hash(password, 10);
   await upsertUser("dueno@kngold.com.do", "Dueño KN GOLD", "OWNER", passwordHash);
   await upsertUser("vendedor@kngold.com.do", "Vendedor Demo", "SELLER", passwordHash);
   await upsertUser("vendedor2@kngold.com.do", "Vendedor Norte", "SELLER", passwordHash);
@@ -83,7 +92,10 @@ async function main() {
   }
 
   await db.collection("settings").doc("reservation_hours").set({ key: "reservation_hours", value: "48" });
-  console.log("Firestore seed OK — dueno@kngold.com.do / vendedor@kngold.com.do — clave: kngold2026");
+  console.log(
+    "Firestore seed OK — dueno@kngold.com.do y vendedor@kngold.com.do. " +
+      "Clave: la de SEED_OWNER_PASSWORD."
+  );
 }
 
 main().catch((e) => {

@@ -26,7 +26,9 @@ export async function postJson<T>(url: string, body?: unknown): Promise<T> {
   });
 
   if (res.status === 401 || res.redirected) {
-    window.location.href = "/login";
+    // Conserva el destino para volver aquí tras iniciar sesión.
+    const destino = window.location.pathname + window.location.search;
+    window.location.href = `/login?callbackUrl=${encodeURIComponent(destino)}`;
     throw new SessionExpiredError();
   }
 
