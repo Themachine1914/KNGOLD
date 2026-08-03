@@ -1,12 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs",
-  "installCommand": "npm install",
-  "buildCommand": "prisma generate && prisma db push --skip-generate && tsx prisma/seed.ts && next build",
   "services": {
     "frontend": {
       "root": ".",
-      "framework": "nextjs"
+      "framework": "nextjs",
+      "installCommand": "npm install",
+      "buildCommand": "prisma generate && prisma db push --skip-generate && tsx prisma/seed.ts && next build"
     }
   }
 }
