@@ -1,0 +1,6 @@
+backend
+Datos de KNGOLD
+*.db
+.env
+.env.*
+.git
