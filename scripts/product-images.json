@@ -1,0 +1,30 @@
+{
+  "local": {
+    "KN-SF1": "/products/KN-SF1.webp",
+    "KN-0151": "/products/KN-0151.webp",
+    "KN-76N": "/products/KN-76N.webp",
+    "KN-76G": "/products/KN-76G.webp",
+    "KN-6201": "/products/KN-6201.webp",
+    "KN-7600": "/products/KN-7600.webp",
+    "KN-60X": "/products/KN-60X.webp",
+    "KN-80X": "/products/KN-80X.png",
+    "KN-18": "/products/KN-18.png",
+    "KN-22": "/products/KN-22.png",
+    "KN-30": "/products/KN-30.png",
+    "KN-560": "/products/KN-560.webp"
+  },
+  "remote": {
+    "KN-SF1": "https://kngold.com.do/wp-content/uploads/2025/12/Abanico-Stan-de-18″-con-mando-a-distancia-Kn-SF1-.webp",
+    "KN-0151": "https://kngold.com.do/wp-content/uploads/2026/02/Estufa-20″-Pulgadas-KN-0151.webp",
+    "KN-76N": "https://kngold.com.do/wp-content/uploads/2025/12/Estufa-Satinada-de-30-Pulgadas-KN-76N.webp",
+    "KN-76G": "https://kngold.com.do/wp-content/uploads/2025/12/Estufa-KN-76G-.webp",
+    "KN-6201": "https://kngold.com.do/wp-content/uploads/2026/02/Estufa-24″-Pulgadas-KN-6201.webp",
+    "KN-7600": "https://kngold.com.do/wp-content/uploads/2025/12/Estufa-KN-7600.webp",
+    "KN-60X": "https://kngold.com.do/wp-content/uploads/2026/02/Estufa-60X-.webp",
+    "KN-80X": "https://kngold.com.do/wp-content/uploads/2025/12/Estufa-Alta-Gama-Satinada-30-Pulgadas-KN-80X-2.png",
+    "KN-18": "https://kngold.com.do/wp-content/uploads/2025/12/Lavadora-KN-GOLD-2.png",
+    "KN-22": "https://kngold.com.do/wp-content/uploads/2025/12/Lavadora-KN-GOLD-2.png",
+    "KN-30": "https://kngold.com.do/wp-content/uploads/2025/12/Lavadora-KN-GOLD-2.png",
+    "KN-560": "https://kngold.com.do/wp-content/uploads/2026/03/Nevera-2-Puertas-KN-560FW.webp"
+  }
+}

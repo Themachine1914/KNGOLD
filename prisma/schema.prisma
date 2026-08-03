@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  SELLER
+}
+
+enum QuoteStatus {
+  DRAFT
+  RESERVED
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+}
+
+enum MovementType {
+  ENTRADA
+  SALIDA
+  AJUSTE
+  RESERVA
+  LIBERACION_RESERVA
+  CONFIRMACION_VENTA
+}
+
+enum ImportStatus {
+  ORDERED
+  IN_TRANSIT
+  ARRIVED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(SELLER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  quotes     Quote[]
+  movements  InventoryMovement[]
+  imports    ImportOrder[]
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  sku         String   @unique
+  name        String
+  type        String
+  description String?
+  color       String?
+  listPrice   Float
+  discountPct Float    @default(0)
+  netPrice    Float
+  stockOnHand Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  quoteLines  QuoteLine[]
+  movements   InventoryMovement[]
+  importLines ImportOrderLine[]
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  rnc       String?
+  phone     String?
+  address   String?
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quotes Quote[]
+}
+
+model Quote {
+  id            String      @id @default(cuid())
+  number        Int         @unique
+  sellerId      String
+  customerId    String
+  includeItbis  Boolean     @default(true)
+  status        QuoteStatus @default(DRAFT)
+  subtotal      Float       @default(0)
+  itbisAmount   Float       @default(0)
+  total         Float       @default(0)
+  reservedUntil DateTime?
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  seller    User                @relation(fields: [sellerId], references: [id])
+  customer  Customer            @relation(fields: [customerId], references: [id])
+  lines     QuoteLine[]
+  movements InventoryMovement[]
+}
+
+model QuoteLine {
+  id        String @id @default(cuid())
+  quoteId   String
+  productId String
+  qty       Int
+  unitPrice Float
+  lineTotal Float
+
+  quote   Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  product Product  @relation(fields: [productId], references: [id])
+}
+
+model InventoryMovement {
+  id             String       @id @default(cuid())
+  productId      String
+  type           MovementType
+  qty            Int
+  /// Stock físico restante después del movimiento
+  stockAfter     Int          @default(0)
+  /// Disponible (físico - reservas) después del movimiento
+  availableAfter Int          @default(0)
+  quoteId        String?
+  userId         String?
+  note           String?
+  createdAt      DateTime     @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+  quote   Quote?  @relation(fields: [quoteId], references: [id])
+  user    User?   @relation(fields: [userId], references: [id])
+}
+
+model ImportOrder {
+  id           String       @id @default(cuid())
+  number       Int          @unique
+  supplier     String?
+  status       ImportStatus @default(ORDERED)
+  eta          DateTime
+  arrivedAt    DateTime?
+  notes        String?
+  createdById  String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  createdBy User              @relation(fields: [createdById], references: [id])
+  lines     ImportOrderLine[]
+}
+
+model ImportOrderLine {
+  id        String @id @default(cuid())
+  importId  String
+  productId String
+  qty       Int
+
+  import  ImportOrder @relation(fields: [importId], references: [id], onDelete: Cascade)
+  product Product     @relation(fields: [productId], references: [id])
+}
+
+model AppSetting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+}

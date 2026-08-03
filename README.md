@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# KN GOLD — Sistema móvil de inventario y cotizaciones
 
-## Getting Started
+App para que el dueño y los vendedores de **KN GOLD** controlen inventario, cotizaciones (con/sin ITBIS), movimientos e importaciones.
 
-First, run the development server:
+## Dos implementaciones (migración en curso)
+
+| Carpeta | Lenguaje | Estado |
+|---------|----------|--------|
+| raíz (`src/`, Next.js) | TypeScript | App UI completa en `http://localhost:3000` |
+| [`backend/`](backend/) | **Go** | API + dominio portado en `http://localhost:8080` |
+
+### Cuentas demo
+
+| Rol | Correo | Clave |
+|-----|--------|-------|
+| Dueño | `dueno@kngold.com.do` | `kngold2026` |
+| Vendedor | `vendedor@kngold.com.do` | `kngold2026` |
+
+---
+
+## Next.js (UI actual)
 
 ```bash
+npm install
+npx prisma db push
+npm run db:seed
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Go (API nueva)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Requiere Go 1.24+ (si no está en PATH: `export PATH="$HOME/sdk/go/bin:$PATH"`).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cd backend
+go run ./cmd/server
+```
 
-## Learn More
+Endpoints principales:
 
-To learn more about Next.js, take a look at the following resources:
+- `POST /api/auth/login`
+- `GET /api/products`
+- `GET /api/movements`
+- `POST /api/quotes` · confirm/cancel
+- `POST /api/imports` · transit/arrive/cancel
+- `POST /api/inventory/adjust`
+- `GET /api/cron/expire-quotes`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Funciones
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Inventario: disponible = físico − reservas
+- Cotización con reserva 48h + ITBIS 18% opcional
+- Movimientos con contador de lo que queda
+- Importaciones con ETA y entrada a stock al llegar
 
-## Deploy on Vercel
+## Orden de migración a Go
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Dominio + API JSON (listo en `backend/`)
+2. Pantallas HTML/HTMX o SPA contra la API Go
+3. PDF cotización en Go
+4. Retirar Next.js cuando la UI Go esté completa
