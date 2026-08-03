@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Card, Input, Label, StickyBar } from "./ui";
 import { QtyStepper } from "./qty-stepper";
 import { ProductThumb } from "./product-thumb";
+import { errorMessage, postJson } from "@/lib/client-fetch";
 
 type ProductOpt = {
   id: string;
@@ -58,30 +59,22 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/imports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          supplier,
-          eta,
-          notes,
-          status,
-          lines: selected.map((l) => ({
-            productId: l.product.id,
-            qty: l.qty,
-          })),
-        }),
+      const data = await postJson<{ import: { id: string } }>("/api/imports", {
+        supplier,
+        eta,
+        notes,
+        status,
+        lines: selected.map((l) => ({
+          productId: l.product.id,
+          qty: l.qty,
+        })),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "No se pudo crear el pedido");
-        return;
-      }
       router.push(`/imports/${data.import.id}`);
       router.refresh();
-    } catch {
-      setError("Sin conexión. Revisa el internet e intenta de nuevo.");
-    } finally {
+      // Igual que en cotizaciones: no liberamos el botón hasta navegar, o un
+      // segundo toque registra el pedido dos veces.
+    } catch (e) {
+      setError(errorMessage(e));
       setLoading(false);
     }
   }

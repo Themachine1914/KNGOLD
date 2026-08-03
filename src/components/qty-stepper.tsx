@@ -20,7 +20,10 @@ export function QtyStepper({
 
   function clamp(n: number) {
     const floor = Math.max(0, Math.floor(n));
-    return max !== undefined ? Math.min(max, floor) : floor;
+    // `max` puede llegar negativo: disponible = físico − reservado, y un
+    // sobre-reservado lo deja bajo cero. Sin este Math.max, el campo
+    // mostraría una cantidad negativa.
+    return max !== undefined ? Math.min(Math.max(0, max), floor) : floor;
   }
 
   return (

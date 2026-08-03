@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { createImportOrder } from "@/lib/imports";
-import type { ImportStatus } from "@/lib/types";
+import { firstIssue, importInputSchema } from "@/lib/validation";
+import { publicErrorMessage } from "@/lib/api-error";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -13,38 +14,26 @@ export async function POST(req: Request) {
   }
 
   try {
-    const body = await req.json();
-    const lines = Array.isArray(body.lines) ? body.lines : [];
-    const etaRaw = String(body.eta || "");
-    if (!etaRaw) {
-      return NextResponse.json({ error: "Fecha ETA requerida" }, { status: 400 });
+    const parsed = importInputSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
     }
+    const { eta: etaRaw, ...rest } = parsed.data;
 
     const eta = new Date(`${etaRaw}T12:00:00`);
     if (Number.isNaN(eta.getTime())) {
       return NextResponse.json({ error: "Fecha inválida" }, { status: 400 });
     }
 
-    const status: ImportStatus =
-      body.status === "IN_TRANSIT" ? "IN_TRANSIT" : "ORDERED";
-
     const order = await createImportOrder({
       createdById: session.user.id,
-      supplier: body.supplier ? String(body.supplier) : undefined,
+      ...rest,
       eta,
-      notes: body.notes ? String(body.notes) : undefined,
-      status,
-      lines: lines.map((l: { productId: string; qty: number }) => ({
-        productId: String(l.productId),
-        qty: Number(l.qty),
-      })),
     });
 
     return NextResponse.json({ ok: true, import: order });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Error" },
-      { status: 400 }
-    );
+    const { message, status } = publicErrorMessage(e);
+    return NextResponse.json({ error: message }, { status });
   }
 }

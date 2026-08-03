@@ -19,6 +19,37 @@ async function getProduct(id: string): Promise<Product> {
   return { id: doc.id, ...doc.data() } as Product;
 }
 
+/**
+ * Reclama un pedido: comprueba y cambia su estado en una sola operación
+ * atómica. Devuelve el pedido si el reclamo fue nuestro, o `null` si otro
+ * proceso llegó primero.
+ *
+ * Sin esto, comprobar el estado y escribir eran dos pasos sueltos: un doble
+ * toque sobre "Confirmar llegada" ingresaba la mercancía dos veces, y tocar
+ * "Cancelar" mientras corría la llegada dejaba el pedido cancelado con el
+ * stock ya sumado.
+ */
+async function claimImport(
+  importId: string,
+  canClaim: (order: ImportOrder) => boolean,
+  changes: Record<string, unknown>
+): Promise<ImportOrder | null> {
+  const ref = getDb().collection("imports").doc(importId);
+  return getDb().runTransaction(async (tx) => {
+    const doc = await tx.get(ref);
+    if (!doc.exists) throw new Error("Pedido no encontrado");
+    const order = { id: doc.id, ...doc.data() } as ImportOrder;
+    if (!canClaim(order)) return null;
+    tx.update(ref, { ...changes, updatedAt: new Date().toISOString() });
+    return order;
+  });
+}
+
+/** Estados desde los que un pedido todavía se puede mover. */
+function isOpen(order: ImportOrder): boolean {
+  return order.status === "ORDERED" || order.status === "IN_TRANSIT";
+}
+
 export async function createImportOrder(input: {
   createdById: string;
   supplier?: string;
@@ -28,14 +59,21 @@ export async function createImportOrder(input: {
   lines: { productId: string; qty: number }[];
 }): Promise<ImportOrder> {
   if (!input.lines.length) throw new Error("El pedido debe tener al menos un producto.");
+
+  // Igual que en cotizaciones: la API acepta JSON arbitrario, así que dos
+  // líneas del mismo producto se suman en una sola.
+  const wanted = new Map<string, number>();
   for (const line of input.lines) {
-    if (line.qty <= 0) throw new Error("Cantidad inválida.");
+    if (!Number.isInteger(line.qty) || line.qty <= 0) {
+      throw new Error("Cantidad inválida: debe ser un número entero positivo.");
+    }
+    wanted.set(line.productId, (wanted.get(line.productId) ?? 0) + line.qty);
   }
 
-  const lines: ImportOrderLine[] = input.lines.map((l) => ({
+  const lines: ImportOrderLine[] = [...wanted].map(([productId, qty]) => ({
     id: newId(),
-    productId: l.productId,
-    qty: l.qty,
+    productId,
+    qty,
   }));
 
   const id = newId();
@@ -58,28 +96,34 @@ export async function createImportOrder(input: {
 }
 
 export async function updateImportStatus(importId: string, status: ImportStatus) {
-  const ref = getDb().collection("imports").doc(importId);
-  const snap = await ref.get();
-  if (!snap.exists) throw new Error("Pedido no encontrado");
-  const existing = snap.data() as ImportOrder;
-  if (existing.status === "ARRIVED") throw new Error("Este pedido ya llegó; no se puede cambiar.");
-  if (existing.status === "CANCELLED") throw new Error("Este pedido está cancelado.");
   if (status === "ARRIVED") {
     throw new Error("Usa receiveImportOrder para marcar llegada");
   }
-  await ref.update({ status, updatedAt: new Date().toISOString() });
+  const claimed = await claimImport(importId, isOpen, { status });
+  if (!claimed) {
+    throw new Error("El pedido cambió de estado; recarga la página.");
+  }
   return getImport(importId);
 }
 
 export async function receiveImportOrder(importId: string, userId: string) {
-  const ref = getDb().collection("imports").doc(importId);
-  const snap = await ref.get();
-  if (!snap.exists) throw new Error("Pedido no encontrado");
-  const order = { id: snap.id, ...snap.data() } as ImportOrder;
-  if (order.status === "ARRIVED") throw new Error("Este pedido ya fue recibido.");
-  if (order.status === "CANCELLED") throw new Error("No se puede recibir un pedido cancelado.");
-
   const now = new Date().toISOString();
+
+  // Reclamamos ANTES de sumar stock. Si se hiciera al revés, un doble toque
+  // sobre "Confirmar llegada" ingresaría la mercancía dos veces.
+  const order = await claimImport(importId, isOpen, {
+    status: "ARRIVED",
+    arrivedAt: now,
+  });
+  if (!order) {
+    const current = await getImport(importId);
+    throw new Error(
+      current?.status === "ARRIVED"
+        ? "Este pedido ya fue recibido."
+        : "No se puede recibir un pedido cancelado."
+    );
+  }
+
   for (const line of order.lines || []) {
     const pref = getDb().collection("products").doc(line.productId);
     let next = 0;
@@ -108,22 +152,19 @@ export async function receiveImportOrder(importId: string, userId: string) {
       });
   }
 
-  await ref.update({
-    status: "ARRIVED",
-    arrivedAt: now,
-    updatedAt: now,
-  });
   return getImport(importId);
 }
 
 export async function cancelImportOrder(importId: string) {
-  const ref = getDb().collection("imports").doc(importId);
-  const snap = await ref.get();
-  if (!snap.exists) throw new Error("Pedido no encontrado");
-  if (snap.data()?.status === "ARRIVED") {
-    throw new Error("No se puede cancelar un pedido ya recibido.");
+  const claimed = await claimImport(importId, isOpen, { status: "CANCELLED" });
+  if (!claimed) {
+    const current = await getImport(importId);
+    throw new Error(
+      current?.status === "ARRIVED"
+        ? "No se puede cancelar un pedido ya recibido."
+        : "Este pedido ya estaba cancelado."
+    );
   }
-  await ref.update({ status: "CANCELLED", updatedAt: new Date().toISOString() });
   return getImport(importId);
 }
 

@@ -162,11 +162,12 @@ export function Money({
 
 /** Barra fija sobre la BottomNav para la acción principal de un flujo. */
 export function StickyBar({ children }: { children: ReactNode }) {
+  // La nav mide 58px + el área segura del iPhone. Con un 62px fijo, en un
+  // teléfono con indicador de inicio la nav (z-40) tapaba esta barra, y el
+  // área segura se contaba dos veces.
   return (
-    <div className="fixed inset-x-0 bottom-[62px] z-30 border-t border-border bg-card/95 backdrop-blur">
-      <div className="mx-auto max-w-lg px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        {children}
-      </div>
+    <div className="fixed inset-x-0 bottom-[calc(58px+env(safe-area-inset-bottom))] z-30 border-t border-border bg-card/95 backdrop-blur">
+      <div className="mx-auto max-w-lg px-4 py-3">{children}</div>
     </div>
   );
 }

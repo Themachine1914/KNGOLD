@@ -8,10 +8,6 @@ export default auth((req) => {
   const { pathname } = req.nextUrl;
   const isLoggedIn = !!req.auth;
   const isLogin = pathname.startsWith("/login");
-  const isPublicApi =
-    pathname.startsWith("/api/auth") || pathname.startsWith("/api/cron");
-
-  if (isPublicApi) return NextResponse.next();
 
   if (!isLoggedIn && !isLogin) {
     const url = new URL("/login", req.nextUrl.origin);
@@ -27,7 +23,11 @@ export default auth((req) => {
 });
 
 export const config = {
+  // `api` queda fuera a propósito: cada ruta de /api/** valida su propia
+  // sesión y responde 401 en JSON. Si pasaran por aquí, una sesión vencida
+  // devolvería un 302 al HTML de /login, y el `res.json()` del cliente
+  // reventaría con un error de sintaxis en lugar de mandar a iniciar sesión.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icons|products|manifest.webmanifest).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|icons|products|manifest.webmanifest).*)",
   ],
 };

@@ -3,15 +3,18 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, Input, Label } from "./ui";
+import { errorMessage, postJson } from "@/lib/client-fetch";
 
 export function AdjustStockForm({
   productId,
   sku,
   stockOnHand,
+  reserved,
 }: {
   productId: string;
   sku: string;
   stockOnHand: number;
+  reserved: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -41,23 +44,26 @@ export function AdjustStockForm({
       setError(`No puedes sacar ${qty}: solo hay ${stockOnHand} en físico.`);
       return;
     }
+    // El servidor también rechaza bajar del total reservado; avisarlo aquí
+    // evita que el dueño lo descubra después de enviar.
+    if (result < reserved) {
+      setError(
+        `No puedes bajar de ${reserved}: hay ${reserved} unidades apartadas en cotizaciones.`
+      );
+      return;
+    }
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/inventory/adjust", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId, qtyDelta: delta, note }),
+      await postJson("/api/inventory/adjust", {
+        productId,
+        qtyDelta: delta,
+        note,
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "No se pudo ajustar");
-        return;
-      }
       close();
       router.refresh();
-    } catch {
-      setError("Sin conexión. Revisa el internet e intenta de nuevo.");
+    } catch (e) {
+      setError(errorMessage(e));
     } finally {
       setLoading(false);
     }
