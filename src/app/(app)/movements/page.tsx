@@ -38,9 +38,10 @@ export default async function MovementsPage() {
         <div className="space-y-2">
           {movements.map((m) => {
             const delta = movementDelta(m.type, m.qty);
-            const isPhysicalDrop =
-              m.type === "SALIDA" || m.type === "CONFIRMACION_VENTA";
-            const isReserve = m.type === "RESERVA";
+            // Reserva y liberación no tocan el físico: el número que importa
+            // en esas filas es el disponible.
+            const affectsAvailable =
+              m.type === "RESERVA" || m.type === "LIBERACION_RESERVA";
 
             return (
               <Card key={m.id} className="py-3">
@@ -60,12 +61,12 @@ export default async function MovementsPage() {
                       {m.user?.name || "Sistema"} ·{" "}
                       {format(m.createdAt, "dd MMM · HH:mm", { locale: es })}
                     </p>
-                    {m.note ? <p className="mt-1 text-xs text-muted">{m.note}</p> : null}
+                    {m.note ? <p className="mt-1 text-sm text-muted">{m.note}</p> : null}
                   </div>
 
                   <div className="shrink-0 text-right">
                     <p
-                      className={`text-lg font-bold leading-none ${
+                      className={`text-lg font-semibold leading-none tabular-nums ${
                         delta.stockDelta < 0 || delta.availableDelta < 0
                           ? "text-danger"
                           : delta.stockDelta > 0 || delta.availableDelta > 0
@@ -75,25 +76,17 @@ export default async function MovementsPage() {
                     >
                       {delta.label}
                     </p>
-                    <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                      {isReserve || m.type === "LIBERACION_RESERVA"
-                        ? "Disp."
-                        : "Quedan"}
+                    <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                      {affectsAvailable ? "Disponible" : "Físico"}
                     </p>
-                    <p
-                      className={`text-xl font-semibold leading-none ${
-                        isPhysicalDrop || isReserve ? "text-ink" : "text-ink"
-                      }`}
-                    >
-                      {isReserve || m.type === "LIBERACION_RESERVA"
-                        ? m.availableAfter
-                        : m.stockAfter}
+                    <p className="text-2xl font-semibold leading-none tabular-nums text-ink">
+                      {affectsAvailable ? m.availableAfter : m.stockAfter}
                     </p>
-                    {(isReserve || m.type === "LIBERACION_RESERVA") && (
-                      <p className="mt-1 text-[10px] text-muted">
-                        Físico {m.stockAfter}
+                    {affectsAvailable ? (
+                      <p className="mt-1 text-sm text-muted">
+                        Físico <span className="tabular-nums">{m.stockAfter}</span>
                       </p>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </Card>
