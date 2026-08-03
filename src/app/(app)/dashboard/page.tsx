@@ -52,7 +52,7 @@ export default async function DashboardPage() {
     take: 5,
     orderBy: { createdAt: "desc" },
     where: isOwner ? undefined : { sellerId: session!.user.id },
-    include: { customer: true, seller: true },
+    include: { customer: true, seller: { select: { name: true } } },
   });
 
   return (

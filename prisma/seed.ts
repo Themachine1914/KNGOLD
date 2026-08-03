@@ -1,3 +1,6 @@
+// tsx no lee .env por su cuenta: sin esto habría que exportar
+// DATABASE_URL y SEED_OWNER_PASSWORD a mano en cada ejecución.
+import "dotenv/config";
 import { PrismaClient, Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
@@ -139,7 +142,17 @@ const products = [
 ];
 
 async function main() {
-  const passwordHash = await bcrypt.hash("kngold2026", 10);
+  // La clave venía escrita aquí, y además publicada en el README. Quitarla
+  // del formulario de login no servía de nada mientras el seed la siguiera
+  // creando sola en cada despliegue.
+  const password = process.env.SEED_OWNER_PASSWORD;
+  if (!password || password.length < 8) {
+    throw new Error(
+      "Define SEED_OWNER_PASSWORD (mínimo 8 caracteres) antes de sembrar. Ejemplo:\n" +
+        '  SEED_OWNER_PASSWORD="tu-clave-segura" npm run db:seed'
+    );
+  }
+  const passwordHash = await bcrypt.hash(password, 10);
 
   await prisma.user.upsert({
     where: { email: "dueno@kngold.com.do" },
@@ -197,7 +210,10 @@ async function main() {
     create: { key: "reservation_hours", value: "48" },
   });
 
-  console.log("Seed OK — dueño@kngold.com.do / vendedor@kngold.com.do — clave: kngold2026");
+  console.log(
+    "Seed OK — dueno@kngold.com.do (dueño), vendedor@kngold.com.do y " +
+      "vendedor2@kngold.com.do (vendedores). Clave: la de SEED_OWNER_PASSWORD."
+  );
 }
 
 main()

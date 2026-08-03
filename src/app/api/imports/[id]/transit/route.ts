@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicErrorMessage } from "@/lib/api-error";
 import { ImportStatus, Role } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -18,9 +19,7 @@ export async function POST(
     const order = await updateImportStatus(prisma, id, ImportStatus.IN_TRANSIT);
     return NextResponse.json({ ok: true, import: order });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Error" },
-      { status: 400 }
-    );
+    const { message, status } = publicErrorMessage(e);
+    return NextResponse.json({ error: message }, { status });
   }
 }

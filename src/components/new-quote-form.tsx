@@ -6,6 +6,7 @@ import { Badge, Button, Card, Input, Label, Money, StickyBar } from "./ui";
 import { QtyStepper } from "./qty-stepper";
 import { ProductThumb } from "./product-thumb";
 import { calcQuoteTotals, formatRD } from "@/lib/pricing";
+import { errorMessage, postJson } from "@/lib/client-fetch";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 
 type ProductOpt = {
@@ -64,28 +65,21 @@ export function NewQuoteForm({ products }: { products: ProductOpt[] }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/quotes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customer,
-          includeItbis,
-          lines: selectedLines.map((l) => ({
-            productId: l.product.id,
-            qty: l.qty,
-          })),
-        }),
+      const data = await postJson<{ quote: { id: string } }>("/api/quotes", {
+        customer,
+        includeItbis,
+        lines: selectedLines.map((l) => ({
+          productId: l.product.id,
+          qty: l.qty,
+        })),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "No se pudo crear la cotización");
-        return;
-      }
       router.push(`/quotes/${data.quote.id}`);
       router.refresh();
-    } catch {
-      setError("Sin conexión. Revisa el internet e intenta de nuevo.");
-    } finally {
+      // `loading` se queda en true a propósito: la navegación tarda, y si
+      // liberamos el botón aquí un segundo toque crea otra cotización con
+      // su propia reserva de stock.
+    } catch (e) {
+      setError(errorMessage(e));
       setLoading(false);
     }
   }

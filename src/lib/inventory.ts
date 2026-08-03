@@ -5,7 +5,7 @@ import {
   type PrismaClient,
 } from "@prisma/client";
 import { addHours } from "date-fns";
-import { calcQuoteTotals } from "./pricing";
+import { calcQuoteTotals, round2 } from "./pricing";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -19,6 +19,9 @@ export async function getReservedQty(
       productId,
       quote: {
         status: QuoteStatus.RESERVED,
+        // Una reserva vencida ya no aparta nada, aunque el barrido de
+        // expiración todavía no haya pasado por ella.
+        reservedUntil: { gt: new Date() },
         ...(excludeQuoteId ? { id: { not: excludeQuoteId } } : {}),
       },
     },
@@ -50,7 +53,12 @@ export async function getProductsWithAvailability(db: Db) {
     orderBy: [{ type: "asc" }, { name: "asc" }],
   });
   const reservedQuotes = await db.quoteLine.findMany({
-    where: { quote: { status: QuoteStatus.RESERVED } },
+    where: {
+      quote: {
+        status: QuoteStatus.RESERVED,
+        reservedUntil: { gt: new Date() },
+      },
+    },
     select: { productId: true, qty: true },
   });
   const reservedMap = new Map<string, number>();
@@ -71,8 +79,14 @@ async function getReservationHours(db: Db): Promise<number> {
   const setting = await db.appSetting.findUnique({
     where: { key: "reservation_hours" },
   });
-  const fromEnv = Number(process.env.RESERVATION_HOURS || 48);
-  return setting ? Number(setting.value) || fromEnv : fromEnv;
+  // Ojo con el "0": es un valor válido (reserva inmediata) y un `||` lo
+  // trataría como ausente. Igual con un valor no numérico en el entorno.
+  for (const raw of [setting?.value, process.env.RESERVATION_HOURS]) {
+    if (raw == null || raw === "") continue;
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  return 48;
 }
 
 async function balancesAfter(
@@ -108,9 +122,20 @@ export async function createReservedQuote(
     throw new Error("La cotización debe tener al menos un producto.");
   }
 
+  // La API acepta JSON arbitrario, así que dos líneas del mismo producto
+  // pueden llegar por separado. Si se validan sueltas, cada una se compara
+  // contra el disponible completo y entre las dos reservan de más.
+  const wanted = new Map<string, number>();
+  for (const line of input.lines) {
+    if (!Number.isInteger(line.qty) || line.qty <= 0) {
+      throw new Error("Cantidad inválida: debe ser un número entero positivo.");
+    }
+    wanted.set(line.productId, (wanted.get(line.productId) ?? 0) + line.qty);
+  }
+  const lines = [...wanted].map(([productId, qty]) => ({ productId, qty }));
+
   return db.$transaction(async (tx) => {
-    for (const line of input.lines) {
-      if (line.qty <= 0) throw new Error("Cantidad inválida.");
+    for (const line of lines) {
       const { available } = await getAvailableQty(tx, line.productId);
       const product = await tx.product.findUniqueOrThrow({
         where: { id: line.productId },
@@ -137,14 +162,16 @@ export async function createReservedQuote(
     }
 
     const products = await tx.product.findMany({
-      where: { id: { in: input.lines.map((l) => l.productId) } },
+      where: { id: { in: lines.map((l) => l.productId) } },
     });
     const productMap = new Map(products.map((p) => [p.id, p]));
 
-    const builtLines = input.lines.map((l) => {
+    const builtLines = lines.map((l) => {
       const product = productMap.get(l.productId)!;
       const unitPrice = product.netPrice;
-      const lineTotal = unitPrice * l.qty;
+      // Sin redondear aquí, la suma de las líneas que ve el cliente puede
+      // diferir un centavo del subtotal, que sí se redondea.
+      const lineTotal = round2(unitPrice * l.qty);
       return {
         productId: l.productId,
         qty: l.qty,
@@ -184,7 +211,7 @@ export async function createReservedQuote(
       include: {
         lines: { include: { product: true } },
         customer: true,
-        seller: true,
+        seller: { select: { id: true, name: true, email: true } },
       },
     });
 
@@ -224,6 +251,14 @@ export async function confirmQuote(
       throw new Error("Solo se pueden confirmar cotizaciones reservadas.");
     }
 
+    // El barrido de expiración solo corre al abrir ciertas páginas, así que
+    // una reserva vencida puede seguir en RESERVED al llegar aquí.
+    if (quote.reservedUntil && quote.reservedUntil.getTime() <= Date.now()) {
+      throw new Error(
+        "La reserva venció y el stock volvió a estar disponible. Crea una cotización nueva."
+      );
+    }
+
     for (const line of quote.lines) {
       const product = await tx.product.findUniqueOrThrow({
         where: { id: line.productId },
@@ -260,7 +295,7 @@ export async function confirmQuote(
       include: {
         lines: { include: { product: true } },
         customer: true,
-        seller: true,
+        seller: { select: { id: true, name: true, email: true } },
       },
     });
   });
@@ -309,25 +344,43 @@ export async function cancelQuote(
       include: {
         lines: { include: { product: true } },
         customer: true,
-        seller: true,
+        seller: { select: { id: true, name: true, email: true } },
       },
     });
   });
 }
 
 export async function expireReservedQuotes(db: PrismaClient) {
-  const now = new Date();
-  const expired = await db.quote.findMany({
+  const candidates = await db.quote.findMany({
     where: {
       status: QuoteStatus.RESERVED,
-      reservedUntil: { lt: now },
+      reservedUntil: { lt: new Date() },
     },
-    include: { lines: true },
+    select: { id: true },
   });
 
   let count = 0;
-  for (const quote of expired) {
-    await db.$transaction(async (tx) => {
+  for (const { id } of candidates) {
+    // Esta función corre al renderizar varias páginas, así que dos pestañas
+    // pueden entrar a la vez, y el vendedor puede estar confirmando la
+    // cotización justo ahora. Reclamamos la fila con un update condicional
+    // dentro de la transacción: si alguien se nos adelantó, no tocamos nada.
+    const expired = await db.$transaction(async (tx) => {
+      const claimed = await tx.quote.updateMany({
+        where: {
+          id,
+          status: QuoteStatus.RESERVED,
+          reservedUntil: { lt: new Date() },
+        },
+        data: { status: QuoteStatus.EXPIRED, reservedUntil: null },
+      });
+      if (claimed.count === 0) return false;
+
+      const quote = await tx.quote.findUniqueOrThrow({
+        where: { id },
+        include: { lines: true },
+      });
+
       for (const line of quote.lines) {
         const product = await tx.product.findUniqueOrThrow({
           where: { id: line.productId },
@@ -345,12 +398,10 @@ export async function expireReservedQuotes(db: PrismaClient) {
           },
         });
       }
-      await tx.quote.update({
-        where: { id: quote.id },
-        data: { status: QuoteStatus.EXPIRED, reservedUntil: null },
-      });
+      return true;
     });
-    count++;
+
+    if (expired) count++;
   }
   return count;
 }

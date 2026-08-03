@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { Role } from "@prisma/client";
 import { authConfig } from "./auth.config";
 import { prisma } from "./prisma";
+import { clearAttempts, isBlocked, registerFailure } from "./rate-limit";
 
 declare module "next-auth" {
   interface User {
@@ -34,12 +35,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const password = String(credentials?.password || "");
         if (!email || !password) return null;
 
+        // Frena el fuerza bruta y el gasto de CPU de bcrypt. El corte va
+        // antes de tocar la base de datos.
+        if (isBlocked(email)) return null;
+
         const user = await prisma.user.findUnique({ where: { email } });
-        if (!user || !user.active) return null;
+        if (!user || !user.active) {
+          registerFailure(email);
+          return null;
+        }
 
         const valid = await bcrypt.compare(password, user.passwordHash);
-        if (!valid) return null;
+        if (!valid) {
+          registerFailure(email);
+          return null;
+        }
 
+        clearAttempts(email);
         return {
           id: user.id,
           name: user.name,

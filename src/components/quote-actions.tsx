@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "./ui";
 import { ConfirmPanel } from "./confirm-panel";
 import { formatRD } from "@/lib/pricing";
+import { errorMessage, postJson } from "@/lib/client-fetch";
 
 export function QuoteActions({
   quoteId,
@@ -30,18 +31,11 @@ export function QuoteActions({
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/quotes/${quoteId}/${action}`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "No se pudo completar la acción");
-        return;
-      }
+      await postJson(`/api/quotes/${quoteId}/${action}`);
       setPending(null);
       router.refresh();
-    } catch {
-      setError("Sin conexión. Revisa el internet e intenta de nuevo.");
+    } catch (e) {
+      setError(errorMessage(e));
     } finally {
       setLoading(false);
     }

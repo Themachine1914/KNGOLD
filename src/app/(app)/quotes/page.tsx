@@ -37,7 +37,7 @@ export default async function QuotesPage({
       ...(isOwner ? {} : { sellerId: session!.user.id }),
       ...(status ? { status } : {}),
     },
-    include: { customer: true, seller: true, lines: true },
+    include: { customer: true, seller: { select: { name: true } }, lines: true },
   });
 
   return (

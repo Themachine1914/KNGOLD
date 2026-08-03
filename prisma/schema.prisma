@@ -46,9 +46,9 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  quotes     Quote[]
-  movements  InventoryMovement[]
-  imports    ImportOrder[]
+  quotes    Quote[]
+  movements InventoryMovement[]
+  imports   ImportOrder[]
 }
 
 model Product {
@@ -103,6 +103,9 @@ model Quote {
   customer  Customer            @relation(fields: [customerId], references: [id])
   lines     QuoteLine[]
   movements InventoryMovement[]
+
+  @@index([status, reservedUntil])
+  @@index([sellerId, createdAt])
 }
 
 model QuoteLine {
@@ -114,7 +117,13 @@ model QuoteLine {
   lineTotal Float
 
   quote   Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  product Product  @relation(fields: [productId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  /// Una cotización no puede repetir producto: si llegan dos líneas del mismo
+  /// SKU, cada una se validaba contra el disponible completo y entre las dos
+  /// reservaban de más.
+  @@unique([quoteId, productId])
+  @@index([productId])
 }
 
 model InventoryMovement {
@@ -132,24 +141,32 @@ model InventoryMovement {
   createdAt      DateTime     @default(now())
 
   product Product @relation(fields: [productId], references: [id])
-  quote   Quote?  @relation(fields: [quoteId], references: [id])
+  /// Restrict, no el SET NULL por defecto: borrar una cotización dejaba el
+  /// histórico sin su enlace de auditoría, en silencio.
+  quote   Quote?  @relation(fields: [quoteId], references: [id], onDelete: Restrict)
   user    User?   @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@index([productId])
+  @@index([quoteId])
 }
 
 model ImportOrder {
-  id           String       @id @default(cuid())
-  number       Int          @unique
-  supplier     String?
-  status       ImportStatus @default(ORDERED)
-  eta          DateTime
-  arrivedAt    DateTime?
-  notes        String?
-  createdById  String
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id          String       @id @default(cuid())
+  number      Int          @unique
+  supplier    String?
+  status      ImportStatus @default(ORDERED)
+  eta         DateTime
+  arrivedAt   DateTime?
+  notes       String?
+  createdById String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   createdBy User              @relation(fields: [createdById], references: [id])
   lines     ImportOrderLine[]
+
+  @@index([status, eta])
 }
 
 model ImportOrderLine {
@@ -160,6 +177,8 @@ model ImportOrderLine {
 
   import  ImportOrder @relation(fields: [importId], references: [id], onDelete: Cascade)
   product Product     @relation(fields: [productId], references: [id])
+
+  @@index([importId])
 }
 
 model AppSetting {

@@ -8,9 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force",
+    "db:reset": "prisma db push --force-reset && npm run db:seed",
     "postinstall": "prisma generate"
   },
   "prisma": {

@@ -162,6 +162,7 @@ export default async function InventoryPage({
                   productId={p.id}
                   sku={p.sku}
                   stockOnHand={p.stockOnHand}
+                  reserved={p.reserved}
                 />
               ) : null}
             </Card>
