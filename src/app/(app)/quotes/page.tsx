@@ -6,12 +6,32 @@ import { quoteStatusLabel, quoteStatusTone } from "@/lib/labels";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import type { QuoteStatus } from "@/lib/types";
 
-export default async function QuotesPage() {
+const FILTERS: { value: "" | QuoteStatus; label: string }[] = [
+  { value: "", label: "Todas" },
+  { value: "RESERVED", label: "Reservadas" },
+  { value: "CONFIRMED", label: "Confirmadas" },
+  { value: "EXPIRED", label: "Expiradas" },
+  { value: "CANCELLED", label: "Canceladas" },
+];
+
+export default async function QuotesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
   const session = await auth();
   const isOwner = session!.user.role === "OWNER";
   await expireReservedQuotes();
-  const quotes = await listQuotes(isOwner ? undefined : session!.user.id);
+
+  const params = await searchParams;
+  // Lista blanca: cualquier valor desconocido cae en "sin filtro" y nunca
+  // llega a la capa de datos.
+  const active = FILTERS.find((f) => f.value && f.value === params.status)?.value;
+
+  const all = await listQuotes(isOwner ? undefined : session!.user.id);
+  const quotes = active ? all.filter((q) => q.status === active) : all;
 
   return (
     <div>
@@ -20,32 +40,62 @@ export default async function QuotesPage() {
         subtitle={isOwner ? "Todas las reservas del equipo." : "Tus cotizaciones y reservas."}
         action={
           <Link href="/quotes/new">
-            <Button className="px-3 py-2 text-xs">Nueva</Button>
+            <Button variant="gold">Nueva</Button>
           </Link>
         }
       />
 
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+        {FILTERS.map((f) => {
+          const isActive = (active || "") === f.value;
+          return (
+            <Link
+              key={f.value || "all"}
+              href={f.value ? `/quotes?status=${f.value}` : "/quotes"}
+              className={`whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-semibold ${
+                isActive ? "bg-ink text-white" : "border border-border bg-white text-muted"
+              }`}
+            >
+              {f.label}
+            </Link>
+          );
+        })}
+      </div>
+
       {quotes.length === 0 ? (
-        <EmptyState title="Aún no hay cotizaciones" body="Crea una al visitar un cliente." />
+        <EmptyState
+          title={active ? "Nada en este filtro" : "Aún no hay cotizaciones"}
+          body={active ? undefined : "Crea una al visitar un cliente."}
+          action={
+            <Link href="/quotes/new">
+              <Button variant="gold">Nueva cotización</Button>
+            </Link>
+          }
+        />
       ) : (
         <div className="space-y-2">
           {quotes.map((q) => (
-            <Link key={q.id} href={`/quotes/${q.id}`}>
-              <Card className="mb-2 py-3">
+            <Link key={q.id} href={`/quotes/${q.id}`} className="block">
+              <Card className="py-3">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-semibold">#{q.number} · {q.customer?.name}</p>
-                    <p className="text-sm text-muted">
-                      {(q.lines || []).length} ítems · {formatRD(q.total)} ·{" "}
-                      {q.includeItbis ? "Con ITBIS" : "Sin ITBIS"}
+                  <div className="min-w-0">
+                    <p className="font-semibold text-ink">
+                      #{q.number} · {q.customer?.name}
                     </p>
-                    {isOwner ? (
-                      <p className="mt-1 text-xs text-muted">{q.seller?.name}</p>
-                    ) : null}
+                    <p className="mt-0.5 text-lg font-semibold tabular-nums text-ink">
+                      {formatRD(q.total)}
+                    </p>
+                    <p className="text-sm text-muted">
+                      {(q.lines || []).length} ítems ·{" "}
+                      {q.includeItbis ? "Con ITBIS" : "Sin ITBIS"}
+                      {isOwner && q.seller?.name ? ` · ${q.seller.name}` : ""}
+                    </p>
                   </div>
-                  <div className="text-right">
-                    <Badge tone={quoteStatusTone(q.status)}>{quoteStatusLabel(q.status)}</Badge>
-                    <p className="mt-2 text-xs text-muted">
+                  <div className="shrink-0 text-right">
+                    <Badge tone={quoteStatusTone(q.status)}>
+                      {quoteStatusLabel(q.status)}
+                    </Badge>
+                    <p className="mt-2 text-sm text-muted">
                       {format(parseISO(q.createdAt), "dd MMM HH:mm", { locale: es })}
                     </p>
                   </div>

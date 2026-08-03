@@ -46,14 +46,27 @@ export default async function MovementsPage() {
                       {m.user?.name || "Sistema"} ·{" "}
                       {format(parseISO(m.createdAt), "dd MMM · HH:mm", { locale: es })}
                     </p>
-                    {m.note ? <p className="mt-1 text-xs text-muted">{m.note}</p> : null}
+                    {m.note ? <p className="mt-1 text-sm text-muted">{m.note}</p> : null}
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-lg font-bold leading-none text-ink">{delta.label}</p>
-                    <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                      {delta.availableFocus ? "Disp." : "Quedan"}
+                    <p
+                      className={`text-lg font-semibold leading-none tabular-nums ${
+                        delta.label.startsWith("−") ? "text-danger" : "text-success"
+                      }`}
+                    >
+                      {delta.label}
                     </p>
-                    <p className="text-xl font-semibold leading-none">{remaining}</p>
+                    <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                      {delta.availableFocus ? "Disponible" : "Físico"}
+                    </p>
+                    <p className="text-2xl font-semibold leading-none tabular-nums text-ink">
+                      {remaining}
+                    </p>
+                    {delta.availableFocus ? (
+                      <p className="mt-1 text-sm text-muted">
+                        Físico <span className="tabular-nums">{m.stockAfter}</span>
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </Card>
