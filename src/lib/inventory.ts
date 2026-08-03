@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { addHours } from "date-fns";
 import { getDb, newId } from "./firebase";
-import { calcQuoteTotals } from "./pricing";
+import { calcQuoteTotals, round2 } from "./pricing";
 import type {
   Customer,
   InventoryMovement,
@@ -13,7 +13,19 @@ import type {
 } from "./types";
 
 function reservationHours(): number {
-  return Number(process.env.RESERVATION_HOURS || 48) || 48;
+  // Ojo con el "0": es un valor válido (reserva inmediata) y un `||` lo
+  // trataría como ausente, igual que un valor no numérico.
+  const raw = process.env.RESERVATION_HOURS;
+  if (raw == null || raw === "") return 48;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 48;
+}
+
+/** Una reserva vencida ya no aparta stock, aunque nadie la haya expirado aún. */
+function stillReserving(data: FirebaseFirestore.DocumentData): boolean {
+  if (data.status !== "RESERVED") return false;
+  const until = data.reservedUntil as string | null | undefined;
+  return !!until && new Date(until).getTime() > Date.now();
 }
 
 export async function getReservedQty(
@@ -27,6 +39,7 @@ export async function getReservedQty(
   let total = 0;
   for (const doc of snap.docs) {
     if (excludeQuoteId && doc.id === excludeQuoteId) continue;
+    if (!stillReserving(doc.data())) continue;
     const lines = (doc.data().lines || []) as QuoteLine[];
     for (const line of lines) {
       if (line.productId === productId) total += line.qty;
@@ -51,6 +64,7 @@ export async function getProductsWithAvailability(): Promise<Product[]> {
     .where("status", "==", "RESERVED")
     .get();
   for (const q of quotes.docs) {
+    if (!stillReserving(q.data())) continue;
     for (const line of (q.data().lines || []) as QuoteLine[]) {
       reservedMap.set(line.productId, (reservedMap.get(line.productId) || 0) + line.qty);
     }
@@ -72,6 +86,31 @@ async function nextNumber(counter: "quotes" | "imports"): Promise<number> {
     return next;
   });
   return n;
+}
+
+/**
+ * Reclama una cotización: comprueba y cambia su estado en una sola operación
+ * atómica. Devuelve la cotización si el reclamo fue nuestro, o `null` si otro
+ * proceso llegó primero.
+ *
+ * Sin esto, comprobar el estado y escribir después son dos pasos separados:
+ * dos confirmaciones simultáneas descontaban stock dos veces, y el barrido de
+ * expiración podía pisar una confirmación en curso.
+ */
+async function claimQuote(
+  quoteId: string,
+  canClaim: (quote: Quote) => boolean,
+  changes: Record<string, unknown>
+): Promise<Quote | null> {
+  const ref = getDb().collection("quotes").doc(quoteId);
+  return getDb().runTransaction(async (tx) => {
+    const doc = await tx.get(ref);
+    if (!doc.exists) throw new Error("Cotización no encontrada");
+    const quote = { id: doc.id, ...doc.data() } as Quote;
+    if (!canClaim(quote)) return null;
+    tx.update(ref, { ...changes, updatedAt: new Date().toISOString() });
+    return quote;
+  });
 }
 
 async function getProduct(id: string): Promise<Product> {
@@ -104,8 +143,20 @@ export async function createReservedQuote(input: {
 }): Promise<Quote> {
   if (!input.lines.length) throw new Error("La cotización debe tener al menos un producto.");
 
+  // La API acepta JSON arbitrario, así que pueden llegar dos líneas del mismo
+  // producto. Validadas por separado, cada una se compara contra el disponible
+  // completo y entre las dos reservan de más: el disponible queda negativo y la
+  // cotización se traba en RESERVED sin poder confirmarse ni liberarse.
+  const wanted = new Map<string, number>();
   for (const line of input.lines) {
-    if (line.qty <= 0) throw new Error("Cantidad inválida.");
+    if (!Number.isInteger(line.qty) || line.qty <= 0) {
+      throw new Error("Cantidad inválida: debe ser un número entero positivo.");
+    }
+    wanted.set(line.productId, (wanted.get(line.productId) ?? 0) + line.qty);
+  }
+  const lines = [...wanted].map(([productId, qty]) => ({ productId, qty }));
+
+  for (const line of lines) {
     const product = await getProduct(line.productId);
     const reserved = await getReservedQty(line.productId);
     const available = product.stockOnHand - reserved;
@@ -128,14 +179,16 @@ export async function createReservedQuote(input: {
   await getDb().collection("customers").doc(customerId).set(customer);
 
   const builtLines: QuoteLine[] = [];
-  for (const line of input.lines) {
+  for (const line of lines) {
     const product = await getProduct(line.productId);
     builtLines.push({
       id: newId(),
       productId: line.productId,
       qty: line.qty,
       unitPrice: product.netPrice,
-      lineTotal: product.netPrice * line.qty,
+      // Sin redondear, la suma de las líneas que ve el cliente puede diferir
+      // un centavo del subtotal, que sí se redondea.
+      lineTotal: round2(product.netPrice * line.qty),
     });
   }
 
@@ -188,9 +241,36 @@ export async function confirmQuote(quoteId: string, userId: string) {
   const ref = getDb().collection("quotes").doc(quoteId);
   const snap = await ref.get();
   if (!snap.exists) throw new Error("Cotización no encontrada");
-  const quote = { id: snap.id, ...snap.data() } as Quote;
-  if (quote.status !== "RESERVED") {
+  const preview = { id: snap.id, ...snap.data() } as Quote;
+  if (preview.status !== "RESERVED") {
     throw new Error("Solo se pueden confirmar cotizaciones reservadas.");
+  }
+  // El barrido de expiración solo corre al abrir ciertas páginas, así que una
+  // reserva vencida puede seguir en RESERVED al llegar aquí.
+  if (preview.reservedUntil && new Date(preview.reservedUntil).getTime() <= Date.now()) {
+    throw new Error(
+      "La reserva venció y el stock volvió a estar disponible. Crea una cotización nueva."
+    );
+  }
+
+  // Comprobamos el stock antes de reclamar, para no dejar la cotización
+  // confirmada si la mercancía ya no alcanza.
+  for (const line of preview.lines || []) {
+    const product = await getProduct(line.productId);
+    if (product.stockOnHand < line.qty) {
+      throw new Error(`Stock físico insuficiente para ${product.sku} al confirmar.`);
+    }
+  }
+
+  const quote = await claimQuote(
+    quoteId,
+    (q) =>
+      q.status === "RESERVED" &&
+      (!q.reservedUntil || new Date(q.reservedUntil).getTime() > Date.now()),
+    { status: "CONFIRMED", reservedUntil: null }
+  );
+  if (!quote) {
+    throw new Error("La cotización cambió de estado; recarga la página.");
   }
 
   for (const line of quote.lines || []) {
@@ -220,20 +300,15 @@ export async function confirmQuote(quoteId: string, userId: string) {
       note: `Confirmación cotización #${quote.number}`,
     });
   }
-
-  await ref.update({
-    status: "CONFIRMED",
-    reservedUntil: null,
-    updatedAt: new Date().toISOString(),
-  });
 }
 
 export async function cancelQuote(quoteId: string, userId: string) {
-  const ref = getDb().collection("quotes").doc(quoteId);
-  const snap = await ref.get();
-  if (!snap.exists) throw new Error("Cotización no encontrada");
-  const quote = { id: snap.id, ...snap.data() } as Quote;
-  if (quote.status !== "RESERVED" && quote.status !== "DRAFT") {
+  const quote = await claimQuote(
+    quoteId,
+    (q) => q.status === "RESERVED" || q.status === "DRAFT",
+    { status: "CANCELLED", reservedUntil: null }
+  );
+  if (!quote) {
     throw new Error("Esta cotización no se puede cancelar.");
   }
 
@@ -253,12 +328,6 @@ export async function cancelQuote(quoteId: string, userId: string) {
       });
     }
   }
-
-  await ref.update({
-    status: "CANCELLED",
-    reservedUntil: null,
-    updatedAt: new Date().toISOString(),
-  });
 }
 
 export async function expireReservedQuotes(): Promise<number> {
@@ -269,8 +338,23 @@ export async function expireReservedQuotes(): Promise<number> {
     .get();
   let count = 0;
   for (const doc of snap.docs) {
-    const quote = { id: doc.id, ...doc.data() } as Quote;
-    if (!quote.reservedUntil || quote.reservedUntil >= now) continue;
+    const candidate = { id: doc.id, ...doc.data() } as Quote;
+    if (!candidate.reservedUntil || candidate.reservedUntil >= now) continue;
+
+    // Esta función corre al renderizar varias páginas, así que dos pestañas
+    // pueden entrar a la vez, y el vendedor puede estar confirmando justo
+    // ahora. Marcamos EXPIRED primero, de forma atómica: si el reclamo no es
+    // nuestro, no escribimos ningún movimiento.
+    const quote = await claimQuote(
+      doc.id,
+      (q) =>
+        q.status === "RESERVED" &&
+        !!q.reservedUntil &&
+        new Date(q.reservedUntil).getTime() <= Date.now(),
+      { status: "EXPIRED", reservedUntil: null }
+    );
+    if (!quote) continue;
+
     for (const line of quote.lines || []) {
       const product = await getProduct(line.productId);
       const reservedOthers = await getReservedQty(line.productId, quote.id);
@@ -284,11 +368,6 @@ export async function expireReservedQuotes(): Promise<number> {
         note: `Expiración automática cotización #${quote.number}`,
       });
     }
-    await doc.ref.update({
-      status: "EXPIRED",
-      reservedUntil: null,
-      updatedAt: now,
-    });
     count++;
   }
   return count;
