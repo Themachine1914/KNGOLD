@@ -6,7 +6,7 @@
   "crons": [
     {
       "path": "/api/cron/expire-quotes",
-      "schedule": "0 * * * *"
+      "schedule": "0 14 * * *"
     }
   ]
 }
