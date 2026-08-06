@@ -1075,6 +1075,97 @@ export async function updateProductPrice(input: {
   };
 }
 
+/** Alta de producto (solo administración). SKU único. */
+export async function createProduct(input: {
+  id?: string;
+  sku: string;
+  name: string;
+  type: string;
+  description?: string;
+  color?: string;
+  listPrice: number;
+  netPrice: number;
+  stockOnHand?: number;
+  userId: string;
+  imageUrl?: string | null;
+}): Promise<Product> {
+  const sku = input.sku.trim().toUpperCase();
+  const name = input.name.trim();
+  const type = input.type.trim().toUpperCase();
+  if (!sku) throw new Error("El SKU es obligatorio.");
+  if (!name) throw new Error("El nombre es obligatorio.");
+  if (!type) throw new Error("El tipo es obligatorio.");
+
+  const netPrice = Math.round(Number(input.netPrice) * 100) / 100;
+  let listPrice = Math.round(Number(input.listPrice) * 100) / 100;
+  if (!Number.isFinite(netPrice) || netPrice < 0) {
+    throw new Error("Precio de venta inválido");
+  }
+  if (!Number.isFinite(listPrice) || listPrice < 0) {
+    throw new Error("Precio de lista inválido");
+  }
+  if (listPrice < netPrice) listPrice = netPrice;
+
+  const stockOnHand = Math.floor(Number(input.stockOnHand ?? 0));
+  if (!Number.isInteger(stockOnHand) || stockOnHand < 0) {
+    throw new Error("El stock inicial debe ser un entero ≥ 0.");
+  }
+
+  const existing = await getDb()
+    .collection("products")
+    .where("sku", "==", sku)
+    .limit(1)
+    .get();
+  if (!existing.empty) {
+    throw new Error(`Ya existe un producto con el SKU ${sku}.`);
+  }
+
+  const discountPct =
+    listPrice > 0
+      ? Math.round(((listPrice - netPrice) / listPrice) * 10000) / 100
+      : 0;
+
+  const id = input.id || newId();
+  const now = new Date().toISOString();
+  const product: Product = {
+    id,
+    sku,
+    name,
+    type,
+    description: input.description?.trim() || null,
+    color: input.color?.trim() ? input.color.trim().toUpperCase() : null,
+    imageUrl: input.imageUrl || null,
+    listPrice,
+    discountPct,
+    netPrice,
+    stockOnHand,
+    active: true,
+  };
+
+  await getDb()
+    .collection("products")
+    .doc(id)
+    .set({
+      ...product,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+  if (stockOnHand > 0) {
+    await writeMovement({
+      productId: id,
+      type: "ENTRADA",
+      qty: stockOnHand,
+      stockAfter: stockOnHand,
+      availableAfter: stockOnHand,
+      userId: input.userId,
+      note: `Alta de producto ${sku}`,
+    });
+  }
+
+  return product;
+}
+
 export function movementDelta(type: MovementType, qty: number) {
   switch (type) {
     case "ENTRADA":

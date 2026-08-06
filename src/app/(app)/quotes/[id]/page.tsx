@@ -41,6 +41,7 @@ export default async function QuoteDetailPage({
     available: p.available ?? 0,
     availableTransit: p.availableTransit ?? 0,
     availableTotal: p.availableTotal ?? p.available ?? 0,
+    imageUrl: p.imageUrl ?? null,
   }));
 
   return (
@@ -112,7 +113,12 @@ export default async function QuoteDetailPage({
             {(quote.lines || []).map((line) => (
               <div key={line.id} className="flex justify-between gap-2 border-b border-border pb-2 last:border-0 last:pb-0">
                 <div className="flex items-start gap-3 min-w-0">
-                  <ProductThumb sku={line.product?.sku || "?"} alt={line.product?.name || ""} size="sm" />
+                  <ProductThumb
+                    sku={line.product?.sku || "?"}
+                    alt={line.product?.name || ""}
+                    imageUrl={line.product?.imageUrl}
+                    size="sm"
+                  />
                   <div className="min-w-0">
                     <p className="font-semibold">
                       {line.product?.sku} · {line.product?.name}

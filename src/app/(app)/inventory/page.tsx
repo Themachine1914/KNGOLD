@@ -5,6 +5,7 @@ import { formatRD } from "@/lib/pricing";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { AdjustStockForm } from "@/components/adjust-stock-form";
 import { EditProductPriceForm } from "@/components/edit-product-price-form";
+import { NewProductForm } from "@/components/new-product-form";
 import { ProductThumb } from "@/components/product-thumb";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 
@@ -20,6 +21,9 @@ export default async function InventoryPage({
   const type = params.type || "";
 
   let products = await getProductsWithAvailability();
+  const allTypes = Array.from(new Set(products.map((p) => p.type).filter(Boolean))).sort(
+    (a, b) => a.localeCompare(b, "es")
+  );
   if (type) products = products.filter((p) => p.type === type);
   if (q) {
     products = products.filter(
@@ -41,6 +45,7 @@ export default async function InventoryPage({
             ? "Stock, precios de oferta y disponible para cotizar."
             : "Disponible en almacén y en tránsito para apartar."
         }
+        action={isManager ? <NewProductForm typeSuggestions={allTypes} /> : undefined}
       />
 
       <form className="mb-3 flex gap-2">
@@ -85,7 +90,7 @@ export default async function InventoryPage({
             <Card key={p.id}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3 min-w-0">
-                  <ProductThumb sku={p.sku} alt={p.name} />
+                  <ProductThumb sku={p.sku} alt={p.name} imageUrl={p.imageUrl} />
                   <div className="min-w-0">
                     <p className="text-xs font-medium tracking-wide text-gold-dark">
                       {p.type} · {p.sku}

@@ -12,6 +12,7 @@ type ProductOpt = {
   name: string;
   type: string;
   stockOnHand: number;
+  imageUrl?: string | null;
 };
 
 export function NewImportForm({ products }: { products: ProductOpt[] }) {
@@ -167,7 +168,7 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
                 className="flex items-center justify-between gap-2 rounded-xl border border-border px-2 py-2"
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <ProductThumb sku={p.sku} alt={p.name} size="sm" />
+                  <ProductThumb sku={p.sku} alt={p.name} imageUrl={p.imageUrl} size="sm" />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-ink">{p.sku}</p>
                     <p className="truncate text-sm text-muted">{p.name}</p>

@@ -4,6 +4,7 @@ import { formatISO, subDays } from "date-fns";
 import { auth } from "@/lib/auth";
 import { listAppUsers, listUserActivity } from "@/lib/audit";
 import { getSeatInfo, listManagedUsers } from "@/lib/users";
+import { BackupPanel } from "@/components/backup-panel";
 import { UserActivityPanel } from "@/components/user-activity-panel";
 import { UsersAdminPanel } from "@/components/users-admin-panel";
 import { PageHeader } from "@/components/ui";
@@ -26,7 +27,8 @@ export default async function SettingsPage({
   if (session!.user.role !== "OWNER") redirect("/dashboard");
 
   const sp = await searchParams;
-  const tab = sp.tab === "activity" ? "activity" : "users";
+  const tab =
+    sp.tab === "activity" ? "activity" : sp.tab === "backup" ? "backup" : "users";
   const from = sp.from || ymd(subDays(new Date(), 30));
   const to = sp.to || ymd(new Date());
   const userId = sp.userId || "";
@@ -45,30 +47,31 @@ export default async function SettingsPage({
       : Promise.resolve([]),
   ]);
 
+  const tabs = [
+    { id: "users", href: "/settings", label: "Usuarios" },
+    { id: "activity", href: "/settings?tab=activity", label: "Actividad" },
+    { id: "backup", href: "/settings?tab=backup", label: "Respaldo" },
+  ] as const;
+
   return (
     <div>
       <PageHeader
         title="Configuración"
-        subtitle="Usuarios del plan, acceso de soporte y bitácora de actividad."
+        subtitle="Usuarios del plan, actividad y respaldo de data."
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-2">
-        <Link
-          href="/settings"
-          className={`rounded-xl px-3 py-2.5 text-center text-sm font-semibold ${
-            tab === "users" ? "bg-ink text-white" : "border border-border bg-white text-ink"
-          }`}
-        >
-          Usuarios
-        </Link>
-        <Link
-          href="/settings?tab=activity"
-          className={`rounded-xl px-3 py-2.5 text-center text-sm font-semibold ${
-            tab === "activity" ? "bg-ink text-white" : "border border-border bg-white text-ink"
-          }`}
-        >
-          Actividad
-        </Link>
+      <div className="mb-4 grid grid-cols-3 gap-2">
+        {tabs.map((t) => (
+          <Link
+            key={t.id}
+            href={t.href}
+            className={`rounded-xl px-3 py-2.5 text-center text-sm font-semibold ${
+              tab === t.id ? "bg-ink text-white" : "border border-border bg-white text-ink"
+            }`}
+          >
+            {t.label}
+          </Link>
+        ))}
       </div>
 
       {tab === "users" ? (
@@ -77,13 +80,17 @@ export default async function SettingsPage({
           initialSeats={seats}
           currentUserId={session!.user.id}
         />
-      ) : (
+      ) : null}
+
+      {tab === "activity" ? (
         <UserActivityPanel
           users={filterUsers}
           rows={rows}
           filters={{ userId, from, to }}
         />
-      )}
+      ) : null}
+
+      {tab === "backup" ? <BackupPanel /> : null}
     </div>
   );
 }

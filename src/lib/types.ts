@@ -48,6 +48,8 @@ export type Product = {
   type: string;
   description?: string | null;
   color?: string | null;
+  /** Ruta o URL de foto (subida o estática). */
+  imageUrl?: string | null;
   listPrice: number;
   discountPct: number;
   netPrice: number;

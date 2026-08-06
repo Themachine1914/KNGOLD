@@ -7,13 +7,15 @@ import { productImage } from "@/lib/product-images";
 export function ProductThumb({
   sku,
   alt,
+  imageUrl,
   size = "md",
 }: {
   sku: string;
   alt: string;
+  imageUrl?: string | null;
   size?: "sm" | "md" | "lg";
 }) {
-  const src = productImage(sku);
+  const src = productImage(sku, imageUrl);
   const [open, setOpen] = useState(false);
   const sizes = {
     sm: "h-12 w-12",
@@ -21,6 +23,8 @@ export function ProductThumb({
     lg: "h-20 w-20",
   };
   const px = { sm: 48, md: 64, lg: 80 }[size];
+  const isRemote = !!src && (src.startsWith("http://") || src.startsWith("https://"));
+  const isApi = !!src && src.startsWith("/api/");
 
   useEffect(() => {
     if (!open) return;
@@ -46,6 +50,37 @@ export function ProductThumb({
     );
   }
 
+  const img = isRemote || isApi ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt={alt} className="h-full w-full object-contain" />
+  ) : (
+    <Image
+      src={src}
+      alt={alt}
+      width={px}
+      height={px}
+      className="h-full w-full object-contain"
+    />
+  );
+
+  const imgLarge = isRemote || isApi ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      className="mx-auto max-h-[75dvh] w-auto object-contain"
+    />
+  ) : (
+    <Image
+      src={src}
+      alt={alt}
+      width={800}
+      height={800}
+      className="mx-auto max-h-[75dvh] w-auto object-contain"
+      priority
+    />
+  );
+
   return (
     <>
       <button
@@ -54,13 +89,7 @@ export function ProductThumb({
         className={`${sizes[size]} shrink-0 overflow-hidden rounded-2xl border border-border bg-white p-0`}
         aria-label={`Ver imagen de ${alt || sku}`}
       >
-        <Image
-          src={src}
-          alt={alt}
-          width={px}
-          height={px}
-          className="h-full w-full object-contain"
-        />
+        {img}
       </button>
 
       {open ? (
@@ -83,15 +112,8 @@ export function ProductThumb({
             className="relative max-h-[85dvh] w-full max-w-lg overflow-hidden rounded-2xl bg-white p-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <Image
-              src={src}
-              alt={alt}
-              width={800}
-              height={800}
-              className="mx-auto max-h-[75dvh] w-auto object-contain"
-              priority
-            />
-            {(alt || sku) ? (
+            {imgLarge}
+            {alt || sku ? (
               <p className="mt-2 text-center text-sm font-semibold text-ink">
                 {alt || sku}
               </p>

@@ -14,7 +14,12 @@ type Line = {
   transitQty?: number;
   unitPrice: number;
   lineTotal: number;
-  product?: { sku?: string; name?: string; type?: string } | null;
+  product?: {
+    sku?: string;
+    name?: string;
+    type?: string;
+    imageUrl?: string | null;
+  } | null;
 };
 
 type ProductOpt = {
@@ -26,6 +31,7 @@ type ProductOpt = {
   available: number;
   availableTransit: number;
   availableTotal: number;
+  imageUrl?: string | null;
 };
 
 export function EditQuoteLines({
@@ -226,7 +232,12 @@ export function EditQuoteLines({
               className="flex items-start justify-between gap-3 border-b border-border pb-3 last:border-0 last:pb-0"
             >
               <div className="flex min-w-0 items-start gap-3">
-                <ProductThumb sku={sku} alt={name} size="sm" />
+                <ProductThumb
+                  sku={sku}
+                  alt={name}
+                  imageUrl={line?.product?.imageUrl ?? product?.imageUrl}
+                  size="sm"
+                />
                 <div className="min-w-0">
                   <p className="font-semibold">
                     {sku} · {name}

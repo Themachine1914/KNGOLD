@@ -14,6 +14,11 @@ export const PRODUCT_IMAGES: Record<string, string> = {
   "KN-560": "/products/KN-560.webp",
 };
 
-export function productImage(sku: string): string | null {
+/** Preferir foto subida del producto; si no, el mapa estático por SKU. */
+export function productImage(
+  sku: string,
+  imageUrl?: string | null
+): string | null {
+  if (imageUrl) return imageUrl;
   return PRODUCT_IMAGES[sku] || null;
 }

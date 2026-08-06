@@ -19,6 +19,7 @@ type ProductOpt = {
   available: number;
   availableTransit: number;
   availableTotal: number;
+  imageUrl?: string | null;
 };
 
 export function NewQuoteForm({
@@ -225,7 +226,7 @@ export function NewQuoteForm({
               return (
                 <Card key={p.id} className="py-3">
                   <div className="flex items-start gap-3">
-                    <ProductThumb sku={p.sku} alt={p.name} size="sm" />
+                    <ProductThumb sku={p.sku} alt={p.name} imageUrl={p.imageUrl} size="sm" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold tracking-wide text-muted">
                         {p.type} · {p.sku}
