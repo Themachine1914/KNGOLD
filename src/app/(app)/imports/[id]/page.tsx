@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { getImport } from "@/lib/imports";
 import { importStatusLabel, importStatusTone } from "@/lib/labels";
 import { Badge, Card, PageHeader } from "@/components/ui";
@@ -19,7 +20,7 @@ export default async function ImportDetailPage({
   const order = await getImport(id);
   if (!order) notFound();
 
-  const isOwner = session!.user.role === "OWNER";
+  const isOwner = isOpsManager(session!.user.role);
   if (!isOwner && order.status === "CANCELLED") redirect("/imports");
 
   const units = (order.lines || []).reduce((s, l) => s + l.qty, 0);
@@ -55,7 +56,7 @@ export default async function ImportDetailPage({
           </p>
           <p>
             <span className="text-muted">Total:</span> {units} unidades ·{" "}
-            {(order.lines || []).length} productos
+            {(order.lines || []).length} electrodomésticos
           </p>
           {order.notes ? (
             <p>
@@ -78,6 +79,13 @@ export default async function ImportDetailPage({
                   </p>
                   <p className="text-sm text-muted">
                     Stock actual {line.product?.stockOnHand}
+                    {typeof line.productApartado === "number" ? (
+                      <>
+                        {" "}
+                        · Apartadas {line.productApartado} · Libres{" "}
+                        {line.productLibre ?? 0}
+                      </>
+                    ) : null}
                   </p>
                 </div>
               </div>

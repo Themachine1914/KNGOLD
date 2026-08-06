@@ -20,6 +20,7 @@ type QuotePdfData = {
   seller: { name: string };
   lines: {
     qty: number;
+    transitQty?: number;
     unitPrice: number;
     lineTotal: number;
     product: { sku: string; name: string };
@@ -59,6 +60,13 @@ const styles = StyleSheet.create({
   colTotal: { width: "15%", textAlign: "right" },
   totals: { marginTop: 16, alignItems: "flex-end" },
   totalLine: { width: 200, flexDirection: "row", justifyContent: "space-between", marginBottom: 3 },
+  itbisLine: {
+    width: 200,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 3,
+    color: "#c4beb4",
+  },
   totalStrong: {
     width: 200,
     flexDirection: "row",
@@ -90,7 +98,7 @@ export function QuoteDocument({ quote }: { quote: QuotePdfData }) {
               Fecha: {new Date(quote.createdAt).toLocaleString("es-DO")}
             </Text>
             <Text style={styles.muted}>
-              {quote.includeItbis ? "Con ITBIS 18%" : "Sin ITBIS"}
+              {quote.includeItbis ? "Con comprobante" : "Sin comprobante"}
             </Text>
             <Text style={styles.muted}>Vendedor: {quote.seller.name}</Text>
           </View>
@@ -119,7 +127,12 @@ export function QuoteDocument({ quote }: { quote: QuotePdfData }) {
           {quote.lines.map((line, idx) => (
             <View key={idx} style={styles.tableRow}>
               <Text style={styles.colSku}>{line.product.sku}</Text>
-              <Text style={styles.colName}>{line.product.name}</Text>
+              <Text style={styles.colName}>
+                {line.product.name}
+                {(line.transitQty || 0) > 0
+                  ? ` (${line.transitQty} en tránsito)`
+                  : ""}
+              </Text>
               <Text style={styles.colQty}>{line.qty}</Text>
               <Text style={styles.colPrice}>{formatRD(line.unitPrice)}</Text>
               <Text style={styles.colTotal}>{formatRD(line.lineTotal)}</Text>
@@ -132,10 +145,12 @@ export function QuoteDocument({ quote }: { quote: QuotePdfData }) {
             <Text>Subtotal</Text>
             <Text>{formatRD(quote.subtotal)}</Text>
           </View>
-          <View style={styles.totalLine}>
-            <Text>ITBIS (18%)</Text>
-            <Text>{formatRD(quote.itbisAmount)}</Text>
-          </View>
+          {quote.includeItbis ? (
+            <View style={styles.itbisLine}>
+              <Text>ITBIS (18%)</Text>
+              <Text>{formatRD(quote.itbisAmount)}</Text>
+            </View>
+          ) : null}
           <View style={styles.totalStrong}>
             <Text>Total</Text>
             <Text>{formatRD(quote.total)}</Text>

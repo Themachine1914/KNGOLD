@@ -111,7 +111,7 @@ export function Label({
   htmlFor?: string;
 }) {
   return (
-    <label htmlFor={htmlFor} className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">
+    <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-muted">
       {children}
     </label>
   );

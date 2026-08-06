@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { authConfig } from "./auth.config";
 import { getDb } from "./firebase";
 import type { Role, User } from "./types";
+import { ensureUserCanLogin } from "./users";
 
 declare module "next-auth" {
   interface User {
@@ -42,7 +43,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (snap.empty) return null;
         const doc = snap.docs[0];
         const user = { id: doc.id, ...doc.data() } as User;
-        if (!user.active) return null;
+        const canLogin = await ensureUserCanLogin(user);
+        if (!canLogin) return null;
 
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
@@ -67,5 +69,13 @@ export async function requireSession() {
 export async function requireOwner() {
   const session = await requireSession();
   if (session.user.role !== "OWNER") throw new Error("FORBIDDEN");
+  return session;
+}
+
+export async function requireOpsManager() {
+  const session = await requireSession();
+  if (session.user.role !== "OWNER" && session.user.role !== "ADMIN") {
+    throw new Error("FORBIDDEN");
+  }
   return session;
 }

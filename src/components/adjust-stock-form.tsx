@@ -78,7 +78,7 @@ export function AdjustStockForm({
 
   return (
     <form onSubmit={submit} className="mt-3 space-y-3 rounded-xl bg-background p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+      <p className="text-xs font-medium tracking-wide text-muted">
         Ajuste de {sku}
       </p>
 
@@ -129,7 +129,7 @@ export function AdjustStockForm({
       </div>
 
       <div className="rounded-xl border border-border bg-white px-3 py-2.5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+        <p className="text-xs font-medium tracking-wide text-muted">
           Quedará en físico
         </p>
         <p className="mt-0.5 text-lg font-semibold tabular-nums text-ink">

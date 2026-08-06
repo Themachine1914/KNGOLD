@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { createImportOrder } from "@/lib/imports";
 import type { ImportStatus } from "@/lib/types";
 
@@ -8,8 +9,8 @@ export async function POST(req: Request) {
   if (!session?.user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
-  if (session.user.role !== "OWNER") {
-    return NextResponse.json({ error: "Solo el dueño registra importaciones" }, { status: 403 });
+  if (!isOpsManager(session.user.role)) {
+    return NextResponse.json({ error: "Solo dueño o administrador registra importaciones" }, { status: 403 });
   }
 
   try {

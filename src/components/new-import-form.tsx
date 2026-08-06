@@ -52,7 +52,7 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
       return;
     }
     if (!selected.length) {
-      setError("Agrega al menos un producto.");
+      setError("Agrega al menos un electrodoméstico.");
       return;
     }
     setLoading(true);
@@ -109,7 +109,7 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
           />
         </div>
         <div role="group" aria-label="Estado del pedido">
-          <p className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">
+          <p className="mb-1.5 block text-xs font-medium tracking-wide text-muted">
             Estado
           </p>
           <div className="grid grid-cols-2 gap-2">
@@ -151,12 +151,12 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
       </Card>
 
       <Card className="space-y-2">
-        <p className="font-semibold text-ink">Productos del pedido</p>
+        <p className="font-semibold text-ink">Electrodomésticos del pedido</p>
         <Input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Buscar producto..."
-          aria-label="Buscar producto"
+          placeholder="Buscar electrodoméstico..."
+          aria-label="Buscar electrodoméstico"
         />
         <div className="space-y-2">
           {filtered.map((p) => {
@@ -206,10 +206,12 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
       <StickyBar>
         <div className="mb-2 flex items-end justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+            <p className="text-xs font-medium tracking-wide text-muted">
               {selected.length === 0
-                ? "Sin productos"
-                : `${selected.length} ${selected.length === 1 ? "producto" : "productos"}`}
+                ? "Sin electrodomésticos"
+                : `${selected.length} ${
+                    selected.length === 1 ? "electrodoméstico" : "electrodomésticos"
+                  }`}
             </p>
             <p className="text-2xl font-semibold tabular-nums text-ink">
               {totalUnits} uds

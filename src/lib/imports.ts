@@ -1,5 +1,10 @@
 import { getDb, newId } from "./firebase";
-import { getReservedQty } from "./inventory";
+import {
+  convertTransitApartadosOnArrival,
+  getInTransitQty,
+  getReservedQty,
+  getTransitApartadoQty,
+} from "./inventory";
 import type { ImportOrder, ImportOrderLine, ImportStatus, Product, User } from "./types";
 
 async function nextImportNumber(): Promise<number> {
@@ -90,6 +95,12 @@ export async function receiveImportOrder(importId: string, userId: string) {
       next = stock + line.qty;
       tx.update(pref, { stockOnHand: next, updatedAt: now });
     });
+
+    // Apartados de este tránsito pasan a reserva de stock físico
+    const converted = await convertTransitApartadosOnArrival(
+      line.productId,
+      line.qty
+    );
     const reserved = await getReservedQty(line.productId);
     const movId = newId();
     await getDb()
@@ -100,10 +111,14 @@ export async function receiveImportOrder(importId: string, userId: string) {
         productId: line.productId,
         type: "ENTRADA",
         qty: line.qty,
+        transitQty: converted > 0 ? converted : 0,
         stockAfter: next,
         availableAfter: next - reserved,
         userId,
-        note: `Importación #${order.number} llegada`,
+        note:
+          converted > 0
+            ? `Importación #${order.number} llegada (${converted} apartados → reserva)`
+            : `Importación #${order.number} llegada`,
         createdAt: now,
       });
   }
@@ -120,9 +135,23 @@ export async function cancelImportOrder(importId: string) {
   const ref = getDb().collection("imports").doc(importId);
   const snap = await ref.get();
   if (!snap.exists) throw new Error("Pedido no encontrado");
-  if (snap.data()?.status === "ARRIVED") {
+  const order = { id: snap.id, ...snap.data() } as ImportOrder;
+  if (order.status === "ARRIVED") {
     throw new Error("No se puede cancelar un pedido ya recibido.");
   }
+
+  for (const line of order.lines || []) {
+    const apartado = await getTransitApartadoQty(line.productId);
+    if (apartado <= 0) continue;
+    const incoming = await getInTransitQty(line.productId);
+    const remainingAfterCancel = incoming - line.qty;
+    if (apartado > remainingAfterCancel) {
+      throw new Error(
+        `No se puede cancelar: hay ${apartado} uds apartadas de este producto en cotizaciones. Anula o edita esas cotizaciones primero.`
+      );
+    }
+  }
+
   await ref.update({ status: "CANCELLED", updatedAt: new Date().toISOString() });
   return getImport(importId);
 }
@@ -151,6 +180,12 @@ export async function getImport(id: string): Promise<ImportOrder | null> {
     for (const line of order.lines) {
       try {
         line.product = await getProduct(line.productId);
+        if (order.status === "ORDERED" || order.status === "IN_TRANSIT") {
+          const apartado = await getTransitApartadoQty(line.productId);
+          const incoming = await getInTransitQty(line.productId);
+          line.productApartado = apartado;
+          line.productLibre = Math.max(0, incoming - apartado);
+        }
       } catch {
         /* ignore */
       }

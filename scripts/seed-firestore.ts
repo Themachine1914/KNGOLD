@@ -47,7 +47,7 @@ async function upsertUser(email: string, name: string, role: "OWNER" | "SELLER",
 
 async function main() {
   const passwordHash = await bcrypt.hash("kngold2026", 10);
-  await upsertUser("dueno@kngold.com.do", "Dueño KN GOLD", "OWNER", passwordHash);
+  await upsertUser("dueno@kngold.com.do", "Administración KN GOLD", "OWNER", passwordHash);
   await upsertUser("vendedor@kngold.com.do", "Vendedor Demo", "SELLER", passwordHash);
   await upsertUser("vendedor2@kngold.com.do", "Vendedor Norte", "SELLER", passwordHash);
 

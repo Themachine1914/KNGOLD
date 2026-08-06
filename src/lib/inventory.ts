@@ -1,9 +1,11 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { addHours } from "date-fns";
 import { getDb, newId } from "./firebase";
-import { calcQuoteTotals } from "./pricing";
+import { calcQuoteTotals, formatRD } from "./pricing";
 import type {
   Customer,
+  DailyInventorySummary,
+  DailyReservationClient,
   InventoryMovement,
   MovementType,
   Product,
@@ -16,6 +18,31 @@ function reservationHours(): number {
   return Number(process.env.RESERVATION_HOURS || 48) || 48;
 }
 
+/** Unidades de la línea que ya están en almacén (no en tránsito). */
+export function stockPortion(line: QuoteLine): number {
+  const transit = Math.min(Math.max(0, Number(line.transitQty || 0)), line.qty);
+  return Math.max(0, line.qty - transit);
+}
+
+export function transitPortion(line: QuoteLine): number {
+  return Math.min(Math.max(0, Number(line.transitQty || 0)), line.qty);
+}
+
+/** Precio de oferta en cotización; si no viene override, usa el anterior o el catálogo. */
+function resolveOfferUnitPrice(
+  catalogNet: number,
+  previous: number | undefined,
+  override: number | undefined
+): number {
+  if (override != null && Number.isFinite(Number(override))) {
+    const price = Math.round(Number(override) * 100) / 100;
+    if (price < 0) throw new Error("El precio no puede ser negativo.");
+    return price;
+  }
+  return previous ?? catalogNet;
+}
+
+/** Reserva sobre stock físico (excluye apartados en tránsito). */
 export async function getReservedQty(
   productId: string,
   excludeQuoteId?: string
@@ -29,10 +56,88 @@ export async function getReservedQty(
     if (excludeQuoteId && doc.id === excludeQuoteId) continue;
     const lines = (doc.data().lines || []) as QuoteLine[];
     for (const line of lines) {
-      if (line.productId === productId) total += line.qty;
+      if (line.productId === productId) total += stockPortion(line);
     }
   }
   return total;
+}
+
+/** Unidades apartadas de importaciones aún no recibidas. */
+export async function getTransitApartadoQty(
+  productId: string,
+  excludeQuoteId?: string
+): Promise<number> {
+  const snap = await getDb()
+    .collection("quotes")
+    .where("status", "==", "RESERVED")
+    .get();
+  let total = 0;
+  for (const doc of snap.docs) {
+    if (excludeQuoteId && doc.id === excludeQuoteId) continue;
+    const lines = (doc.data().lines || []) as QuoteLine[];
+    for (const line of lines) {
+      if (line.productId === productId) total += transitPortion(line);
+    }
+  }
+  return total;
+}
+
+/** Unidades pedidas/en tránsito (importaciones abiertas). */
+export async function getInTransitQty(productId: string): Promise<number> {
+  const snap = await getDb().collection("imports").get();
+  let total = 0;
+  for (const doc of snap.docs) {
+    const status = doc.data().status as string;
+    if (status !== "ORDERED" && status !== "IN_TRANSIT") continue;
+    const lines = (doc.data().lines || []) as { productId: string; qty: number }[];
+    for (const line of lines) {
+      if (line.productId === productId) total += Number(line.qty || 0);
+    }
+  }
+  return total;
+}
+
+/**
+ * Al recibir una importación, convierte apartados en tránsito
+ * en reservas de stock físico (hasta la cantidad llegada).
+ */
+export async function convertTransitApartadosOnArrival(
+  productId: string,
+  arrivedQty: number
+): Promise<number> {
+  if (arrivedQty <= 0) return 0;
+  const snap = await getDb()
+    .collection("quotes")
+    .where("status", "==", "RESERVED")
+    .get();
+  const quotes = snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }) as Quote)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  let remaining = arrivedQty;
+  let convertedTotal = 0;
+
+  for (const quote of quotes) {
+    if (remaining <= 0) break;
+    let changed = false;
+    const lines = (quote.lines || []).map((line) => {
+      if (line.productId !== productId || remaining <= 0) return line;
+      const t = transitPortion(line);
+      if (t <= 0) return line;
+      const convert = Math.min(t, remaining);
+      remaining -= convert;
+      convertedTotal += convert;
+      changed = true;
+      return { ...line, transitQty: t - convert };
+    });
+    if (changed) {
+      await getDb().collection("quotes").doc(quote.id).update({
+        lines,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
+  return convertedTotal;
 }
 
 export async function getProductsWithAvailability(): Promise<Product[]> {
@@ -46,19 +151,52 @@ export async function getProductsWithAvailability(): Promise<Product[]> {
   );
 
   const reservedMap = new Map<string, number>();
+  const transitApartadoMap = new Map<string, number>();
   const quotes = await getDb()
     .collection("quotes")
     .where("status", "==", "RESERVED")
     .get();
   for (const q of quotes.docs) {
     for (const line of (q.data().lines || []) as QuoteLine[]) {
-      reservedMap.set(line.productId, (reservedMap.get(line.productId) || 0) + line.qty);
+      reservedMap.set(
+        line.productId,
+        (reservedMap.get(line.productId) || 0) + stockPortion(line)
+      );
+      transitApartadoMap.set(
+        line.productId,
+        (transitApartadoMap.get(line.productId) || 0) + transitPortion(line)
+      );
+    }
+  }
+
+  const inTransitMap = new Map<string, number>();
+  const imports = await getDb().collection("imports").get();
+  for (const doc of imports.docs) {
+    const status = doc.data().status as string;
+    if (status !== "ORDERED" && status !== "IN_TRANSIT") continue;
+    for (const line of (doc.data().lines || []) as { productId: string; qty: number }[]) {
+      inTransitMap.set(
+        line.productId,
+        (inTransitMap.get(line.productId) || 0) + Number(line.qty || 0)
+      );
     }
   }
 
   return products.map((p) => {
     const reserved = reservedMap.get(p.id) || 0;
-    return { ...p, reserved, available: p.stockOnHand - reserved };
+    const available = p.stockOnHand - reserved;
+    const inTransit = inTransitMap.get(p.id) || 0;
+    const transitApartado = transitApartadoMap.get(p.id) || 0;
+    const availableTransit = Math.max(0, inTransit - transitApartado);
+    return {
+      ...p,
+      reserved,
+      available,
+      inTransit,
+      transitApartado,
+      availableTransit,
+      availableTotal: available + availableTransit,
+    };
   });
 }
 
@@ -100,20 +238,46 @@ export async function createReservedQuote(input: {
   };
   includeItbis: boolean;
   notes?: string;
-  lines: { productId: string; qty: number }[];
+  lines: { productId: string; qty: number; unitPrice?: number }[];
 }): Promise<Quote> {
   if (!input.lines.length) throw new Error("La cotización debe tener al menos un producto.");
+
+  type Planned = {
+    productId: string;
+    qty: number;
+    transitQty: number;
+    unitPrice: number;
+    sku: string;
+  };
+  const planned: Planned[] = [];
 
   for (const line of input.lines) {
     if (line.qty <= 0) throw new Error("Cantidad inválida.");
     const product = await getProduct(line.productId);
     const reserved = await getReservedQty(line.productId);
-    const available = product.stockOnHand - reserved;
-    if (line.qty > available) {
+    const availableStock = product.stockOnHand - reserved;
+    const inTransit = await getInTransitQty(line.productId);
+    const transitApartado = await getTransitApartadoQty(line.productId);
+    const availableTransit = Math.max(0, inTransit - transitApartado);
+    const availableTotal = availableStock + availableTransit;
+
+    if (line.qty > availableTotal) {
       throw new Error(
-        `Stock insuficiente para ${product.sku}: disponible ${available}, solicitado ${line.qty}.`
+        `Stock insuficiente para ${product.sku}: disponible ${availableStock}` +
+          (availableTransit > 0 ? ` + ${availableTransit} en tránsito` : "") +
+          `, solicitado ${line.qty}.`
       );
     }
+
+    const fromStock = Math.min(line.qty, availableStock);
+    const transitQty = line.qty - fromStock;
+    planned.push({
+      productId: line.productId,
+      qty: line.qty,
+      transitQty,
+      unitPrice: resolveOfferUnitPrice(product.netPrice, undefined, line.unitPrice),
+      sku: product.sku,
+    });
   }
 
   const customerId = newId();
@@ -127,17 +291,14 @@ export async function createReservedQuote(input: {
   };
   await getDb().collection("customers").doc(customerId).set(customer);
 
-  const builtLines: QuoteLine[] = [];
-  for (const line of input.lines) {
-    const product = await getProduct(line.productId);
-    builtLines.push({
-      id: newId(),
-      productId: line.productId,
-      qty: line.qty,
-      unitPrice: product.netPrice,
-      lineTotal: product.netPrice * line.qty,
-    });
-  }
+  const builtLines: QuoteLine[] = planned.map((p) => ({
+    id: newId(),
+    productId: p.productId,
+    qty: p.qty,
+    transitQty: p.transitQty,
+    unitPrice: p.unitPrice,
+    lineTotal: p.unitPrice * p.qty,
+  }));
 
   const totals = calcQuoteTotals(
     builtLines.map((l) => l.lineTotal),
@@ -169,15 +330,21 @@ export async function createReservedQuote(input: {
   for (const line of builtLines) {
     const product = await getProduct(line.productId);
     const reserved = await getReservedQty(line.productId);
+    const t = transitPortion(line);
+    const note =
+      t > 0
+        ? `Reserva cotización #${number}: ${stockPortion(line)} en almacén + ${t} apartadas en tránsito`
+        : `Reserva cotización #${number}`;
     await writeMovement({
       productId: line.productId,
       type: "RESERVA",
       qty: line.qty,
+      transitQty: t,
       stockAfter: product.stockOnHand,
       availableAfter: product.stockOnHand - reserved,
       quoteId,
       userId: input.sellerId,
-      note: `Reserva cotización #${number}`,
+      note,
     });
   }
 
@@ -191,6 +358,16 @@ export async function confirmQuote(quoteId: string, userId: string) {
   const quote = { id: snap.id, ...snap.data() } as Quote;
   if (quote.status !== "RESERVED") {
     throw new Error("Solo se pueden confirmar cotizaciones reservadas.");
+  }
+
+  const pendingTransit = (quote.lines || []).reduce(
+    (s, l) => s + transitPortion(l),
+    0
+  );
+  if (pendingTransit > 0) {
+    throw new Error(
+      `Hay ${pendingTransit} uds apartadas en tránsito. Recibe la importación antes de confirmar la venta.`
+    );
   }
 
   for (const line of quote.lines || []) {
@@ -233,8 +410,16 @@ export async function cancelQuote(quoteId: string, userId: string) {
   const snap = await ref.get();
   if (!snap.exists) throw new Error("Cotización no encontrada");
   const quote = { id: snap.id, ...snap.data() } as Quote;
-  if (quote.status !== "RESERVED" && quote.status !== "DRAFT") {
-    throw new Error("Esta cotización no se puede cancelar.");
+
+  if (quote.status === "CANCELLED" || quote.status === "EXPIRED") {
+    throw new Error("Esta cotización ya está anulada o expirada.");
+  }
+  if (
+    quote.status !== "RESERVED" &&
+    quote.status !== "DRAFT" &&
+    quote.status !== "CONFIRMED"
+  ) {
+    throw new Error("Esta cotización no se puede anular.");
   }
 
   if (quote.status === "RESERVED") {
@@ -245,11 +430,39 @@ export async function cancelQuote(quoteId: string, userId: string) {
         productId: line.productId,
         type: "LIBERACION_RESERVA",
         qty: line.qty,
+        transitQty: transitPortion(line),
         stockAfter: product.stockOnHand,
         availableAfter: product.stockOnHand - reservedOthers,
         quoteId,
         userId,
-        note: `Cancelación cotización #${quote.number}`,
+        note: `Anulación cotización #${quote.number}`,
+      });
+    }
+  }
+
+  if (quote.status === "CONFIRMED") {
+    for (const line of quote.lines || []) {
+      const pref = getDb().collection("products").doc(line.productId);
+      await getDb().runTransaction(async (tx) => {
+        const pdoc = await tx.get(pref);
+        if (!pdoc.exists) throw new Error("Producto no encontrado");
+        const stock = Number(pdoc.data()?.stockOnHand || 0);
+        tx.update(pref, {
+          stockOnHand: stock + line.qty,
+          updatedAt: new Date().toISOString(),
+        });
+      });
+      const product = await getProduct(line.productId);
+      const reserved = await getReservedQty(line.productId);
+      await writeMovement({
+        productId: line.productId,
+        type: "ANULACION_VENTA",
+        qty: line.qty,
+        stockAfter: product.stockOnHand,
+        availableAfter: product.stockOnHand - reserved,
+        quoteId,
+        userId,
+        note: `Anulación venta cotización #${quote.number}`,
       });
     }
   }
@@ -259,6 +472,334 @@ export async function cancelQuote(quoteId: string, userId: string) {
     reservedUntil: null,
     updatedAt: new Date().toISOString(),
   });
+}
+
+/**
+ * Edita una cotización reservada o facturada (confirmada).
+ * - RESERVED: ajusta reservas / tránsito.
+ * - CONFIRMED: ajusta stock físico (venta) a la par.
+ */
+export async function updateQuoteLines(
+  quoteId: string,
+  userId: string,
+  nextLinesInput: { productId: string; qty: number; unitPrice?: number }[]
+): Promise<Quote> {
+  const ref = getDb().collection("quotes").doc(quoteId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("Cotización no encontrada");
+  const quote = { id: snap.id, ...snap.data() } as Quote;
+  if (quote.status === "CONFIRMED") {
+    return updateConfirmedQuoteLines(quote, userId, nextLinesInput);
+  }
+  if (quote.status !== "RESERVED") {
+    throw new Error("Solo se pueden editar cotizaciones reservadas o facturadas.");
+  }
+
+  const currentLines = quote.lines || [];
+  const currentByProduct = new Map(
+    currentLines.map((l) => [l.productId, l] as const)
+  );
+
+  const requested = new Map<string, number>();
+  const priceOverride = new Map<string, number>();
+  for (const row of nextLinesInput) {
+    const qty = Math.floor(Number(row.qty) || 0);
+    if (qty < 0) throw new Error("Cantidad inválida.");
+    if (!row.productId) throw new Error("Producto inválido.");
+    // Si el mismo producto llega dos veces, suma
+    requested.set(row.productId, (requested.get(row.productId) || 0) + qty);
+    if (row.unitPrice != null && Number.isFinite(Number(row.unitPrice))) {
+      priceOverride.set(row.productId, Number(row.unitPrice));
+    }
+  }
+
+  // Productos actuales omitidos en el payload = 0 (quitar)
+  for (const line of currentLines) {
+    if (!requested.has(line.productId)) requested.set(line.productId, 0);
+  }
+
+  const nextLines: QuoteLine[] = [];
+  const deltas: { productId: string; delta: number; sku: string }[] = [];
+  let pricesChanged = false;
+
+  for (const [productId, nextQty] of requested) {
+    const product = await getProduct(productId);
+    const old = currentByProduct.get(productId);
+    const oldQty = old?.qty || 0;
+
+    if (nextQty === 0) {
+      if (oldQty > 0) {
+        deltas.push({ productId, delta: -oldQty, sku: product.sku });
+      }
+      continue;
+    }
+
+    // Disponibilidad libre de otros + lo que esta cotización ya tiene
+    const availableStock =
+      product.stockOnHand - (await getReservedQty(productId, quoteId));
+    const availableTransit = Math.max(
+      0,
+      (await getInTransitQty(productId)) -
+        (await getTransitApartadoQty(productId, quoteId))
+    );
+    const availableTotal = availableStock + availableTransit;
+
+    if (nextQty > availableTotal) {
+      throw new Error(
+        `Stock insuficiente para ${product.sku}: disponible ${availableStock}` +
+          (availableTransit > 0 ? ` + ${availableTransit} en tránsito` : "") +
+          `, solicitado ${nextQty}.`
+      );
+    }
+
+    const transitQty = Math.max(0, nextQty - availableStock);
+    const unitPrice = resolveOfferUnitPrice(
+      product.netPrice,
+      old?.unitPrice,
+      priceOverride.get(productId)
+    );
+    if (old && Math.round(old.unitPrice * 100) !== Math.round(unitPrice * 100)) {
+      pricesChanged = true;
+    }
+    nextLines.push({
+      id: old?.id || newId(),
+      productId,
+      qty: nextQty,
+      transitQty,
+      unitPrice,
+      lineTotal: unitPrice * nextQty,
+    });
+
+    if (nextQty !== oldQty) {
+      deltas.push({ productId, delta: nextQty - oldQty, sku: product.sku });
+    }
+  }
+
+  if (!deltas.length && !pricesChanged) {
+    return quote;
+  }
+
+  if (!nextLines.length) {
+    await cancelQuote(quoteId, userId);
+    const cancelled = await ref.get();
+    return { id: cancelled.id, ...cancelled.data() } as Quote;
+  }
+
+  const totals = calcQuoteTotals(
+    nextLines.map((l) => l.lineTotal),
+    quote.includeItbis
+  );
+  const updatedAt = new Date().toISOString();
+  await ref.update({
+    lines: nextLines,
+    subtotal: totals.subtotal,
+    itbisAmount: totals.itbisAmount,
+    total: totals.total,
+    updatedAt,
+  });
+
+  for (const d of deltas) {
+    const product = await getProduct(d.productId);
+    const reserved = await getReservedQty(d.productId);
+    const nextLine = nextLines.find((l) => l.productId === d.productId);
+    const oldLine = currentByProduct.get(d.productId);
+    const transitDelta =
+      transitPortion(nextLine || { id: "", productId: d.productId, qty: 0, unitPrice: 0, lineTotal: 0 }) -
+      transitPortion(oldLine || { id: "", productId: d.productId, qty: 0, unitPrice: 0, lineTotal: 0 });
+    if (d.delta > 0) {
+      await writeMovement({
+        productId: d.productId,
+        type: "RESERVA",
+        qty: d.delta,
+        transitQty: Math.max(0, transitDelta),
+        stockAfter: product.stockOnHand,
+        availableAfter: product.stockOnHand - reserved,
+        quoteId,
+        userId,
+        note: `Ajuste cotización #${quote.number}: +${d.delta}`,
+      });
+    } else {
+      await writeMovement({
+        productId: d.productId,
+        type: "LIBERACION_RESERVA",
+        qty: Math.abs(d.delta),
+        transitQty: Math.max(0, -transitDelta),
+        stockAfter: product.stockOnHand,
+        availableAfter: product.stockOnHand - reserved,
+        quoteId,
+        userId,
+        note: `Ajuste cotización #${quote.number}: ${d.delta}`,
+      });
+    }
+  }
+
+  return {
+    ...quote,
+    lines: nextLines,
+    subtotal: totals.subtotal,
+    itbisAmount: totals.itbisAmount,
+    total: totals.total,
+    updatedAt,
+  };
+}
+
+/** Edita una venta ya facturada: suma/baja productos y mueve stock físico. */
+async function updateConfirmedQuoteLines(
+  quote: Quote,
+  userId: string,
+  nextLinesInput: { productId: string; qty: number; unitPrice?: number }[]
+): Promise<Quote> {
+  const ref = getDb().collection("quotes").doc(quote.id);
+  const currentLines = quote.lines || [];
+  const currentByProduct = new Map(
+    currentLines.map((l) => [l.productId, l] as const)
+  );
+
+  const requested = new Map<string, number>();
+  const priceOverride = new Map<string, number>();
+  for (const row of nextLinesInput) {
+    const qty = Math.floor(Number(row.qty) || 0);
+    if (qty < 0) throw new Error("Cantidad inválida.");
+    if (!row.productId) throw new Error("Producto inválido.");
+    requested.set(row.productId, (requested.get(row.productId) || 0) + qty);
+    if (row.unitPrice != null && Number.isFinite(Number(row.unitPrice))) {
+      priceOverride.set(row.productId, Number(row.unitPrice));
+    }
+  }
+  for (const line of currentLines) {
+    if (!requested.has(line.productId)) requested.set(line.productId, 0);
+  }
+
+  const nextLines: QuoteLine[] = [];
+  const deltas: { productId: string; delta: number; sku: string }[] = [];
+  let pricesChanged = false;
+
+  for (const [productId, nextQty] of requested) {
+    const product = await getProduct(productId);
+    const old = currentByProduct.get(productId);
+    const oldQty = old?.qty || 0;
+
+    if (nextQty === 0) {
+      if (oldQty > 0) {
+        deltas.push({ productId, delta: -oldQty, sku: product.sku });
+      }
+      continue;
+    }
+
+    // Stock libre + lo ya vendido en esta factura (que se puede "devolver" al editar)
+    const freeStock =
+      product.stockOnHand - (await getReservedQty(productId));
+    const maxAllowed = freeStock + oldQty;
+    if (nextQty > maxAllowed) {
+      throw new Error(
+        `Stock insuficiente para ${product.sku}: disponible ${freeStock}, solicitado +${Math.max(0, nextQty - oldQty)}.`
+      );
+    }
+
+    const unitPrice = resolveOfferUnitPrice(
+      product.netPrice,
+      old?.unitPrice,
+      priceOverride.get(productId)
+    );
+    if (old && Math.round(old.unitPrice * 100) !== Math.round(unitPrice * 100)) {
+      pricesChanged = true;
+    }
+    nextLines.push({
+      id: old?.id || newId(),
+      productId,
+      qty: nextQty,
+      transitQty: 0,
+      unitPrice,
+      lineTotal: unitPrice * nextQty,
+    });
+
+    if (nextQty !== oldQty) {
+      deltas.push({ productId, delta: nextQty - oldQty, sku: product.sku });
+    }
+  }
+
+  if (!deltas.length && !pricesChanged) return quote;
+
+  if (!nextLines.length) {
+    await cancelQuote(quote.id, userId);
+    const cancelled = await ref.get();
+    return { id: cancelled.id, ...cancelled.data() } as Quote;
+  }
+
+  const totals = calcQuoteTotals(
+    nextLines.map((l) => l.lineTotal),
+    quote.includeItbis
+  );
+  const updatedAt = new Date().toISOString();
+  await ref.update({
+    lines: nextLines,
+    subtotal: totals.subtotal,
+    itbisAmount: totals.itbisAmount,
+    total: totals.total,
+    updatedAt,
+  });
+
+  for (const d of deltas) {
+    const pref = getDb().collection("products").doc(d.productId);
+    if (d.delta > 0) {
+      await getDb().runTransaction(async (tx) => {
+        const pdoc = await tx.get(pref);
+        if (!pdoc.exists) throw new Error("Producto no encontrado");
+        const stock = Number(pdoc.data()?.stockOnHand || 0);
+        if (stock < d.delta) {
+          throw new Error(`Stock físico insuficiente para ${d.sku}`);
+        }
+        tx.update(pref, {
+          stockOnHand: stock - d.delta,
+          updatedAt: new Date().toISOString(),
+        });
+      });
+      const product = await getProduct(d.productId);
+      const reserved = await getReservedQty(d.productId);
+      await writeMovement({
+        productId: d.productId,
+        type: "CONFIRMACION_VENTA",
+        qty: d.delta,
+        stockAfter: product.stockOnHand,
+        availableAfter: product.stockOnHand - reserved,
+        quoteId: quote.id,
+        userId,
+        note: `Ajuste factura #${quote.number}: +${d.delta}`,
+      });
+    } else {
+      const add = Math.abs(d.delta);
+      await getDb().runTransaction(async (tx) => {
+        const pdoc = await tx.get(pref);
+        if (!pdoc.exists) throw new Error("Producto no encontrado");
+        const stock = Number(pdoc.data()?.stockOnHand || 0);
+        tx.update(pref, {
+          stockOnHand: stock + add,
+          updatedAt: new Date().toISOString(),
+        });
+      });
+      const product = await getProduct(d.productId);
+      const reserved = await getReservedQty(d.productId);
+      await writeMovement({
+        productId: d.productId,
+        type: "ANULACION_VENTA",
+        qty: add,
+        stockAfter: product.stockOnHand,
+        availableAfter: product.stockOnHand - reserved,
+        quoteId: quote.id,
+        userId,
+        note: `Ajuste factura #${quote.number}: −${add}`,
+      });
+    }
+  }
+
+  return {
+    ...quote,
+    lines: nextLines,
+    subtotal: totals.subtotal,
+    itbisAmount: totals.itbisAmount,
+    total: totals.total,
+    updatedAt,
+  };
 }
 
 export async function expireReservedQuotes(): Promise<number> {
@@ -278,6 +819,7 @@ export async function expireReservedQuotes(): Promise<number> {
         productId: line.productId,
         type: "LIBERACION_RESERVA",
         qty: line.qty,
+        transitQty: transitPortion(line),
         stockAfter: product.stockOnHand,
         availableAfter: product.stockOnHand - reservedOthers,
         quoteId: quote.id,
@@ -340,9 +882,83 @@ export async function adjustStock(input: {
   });
 }
 
+/** Actualiza precios de catálogo (ofertas). Las cotizaciones nuevas usan netPrice. */
+export async function updateProductPrice(input: {
+  productId: string;
+  netPrice: number;
+  listPrice?: number;
+  userId: string;
+}): Promise<Product> {
+  const netPrice = Math.round(Number(input.netPrice) * 100) / 100;
+  if (!Number.isFinite(netPrice) || netPrice < 0) {
+    throw new Error("Precio de venta inválido");
+  }
+
+  const ref = getDb().collection("products").doc(input.productId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("Producto no encontrado");
+  const current = { id: snap.id, ...snap.data() } as Product;
+
+  const oldNet = Number(current.netPrice || 0);
+  const oldList = Number(current.listPrice || oldNet);
+
+  let listPrice =
+    input.listPrice != null
+      ? Math.round(Number(input.listPrice) * 100) / 100
+      : oldList;
+  if (!Number.isFinite(listPrice) || listPrice < 0) {
+    throw new Error("Precio de lista inválido");
+  }
+  if (listPrice < netPrice) listPrice = netPrice;
+
+  const discountPct =
+    listPrice > 0
+      ? Math.round(((listPrice - netPrice) / listPrice) * 10000) / 100
+      : 0;
+
+  const priceChanged =
+    Math.round(oldNet * 100) !== Math.round(netPrice * 100) ||
+    Math.round(oldList * 100) !== Math.round(listPrice * 100);
+
+  const updatedAt = new Date().toISOString();
+  await ref.update({
+    netPrice,
+    listPrice,
+    discountPct,
+    updatedAt,
+  });
+
+  if (priceChanged && input.userId) {
+    const reserved = await getReservedQty(input.productId);
+    const noteParts = [
+      `Venta ${formatRD(oldNet)} → ${formatRD(netPrice)}`,
+    ];
+    if (Math.round(oldList * 100) !== Math.round(listPrice * 100)) {
+      noteParts.push(`Lista ${formatRD(oldList)} → ${formatRD(listPrice)}`);
+    }
+    await writeMovement({
+      productId: input.productId,
+      type: "CAMBIO_PRECIO",
+      qty: 0,
+      stockAfter: current.stockOnHand,
+      availableAfter: current.stockOnHand - reserved,
+      userId: input.userId,
+      note: noteParts.join(" · "),
+    });
+  }
+
+  return {
+    ...current,
+    netPrice,
+    listPrice,
+    discountPct,
+  };
+}
+
 export function movementDelta(type: MovementType, qty: number) {
   switch (type) {
     case "ENTRADA":
+    case "ANULACION_VENTA":
       return { label: `+${qty}`, availableFocus: false };
     case "SALIDA":
     case "CONFIRMACION_VENTA":
@@ -351,9 +967,301 @@ export function movementDelta(type: MovementType, qty: number) {
       return { label: `−${qty} disp.`, availableFocus: true };
     case "LIBERACION_RESERVA":
       return { label: `+${qty} disp.`, availableFocus: true };
+    case "CAMBIO_PRECIO":
+      return { label: "·", availableFocus: false };
     default:
       return { label: `${qty}`, availableFocus: false };
   }
+}
+
+const DO_TZ = "America/Santo_Domingo";
+
+function dayKeyInDO(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: DO_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
+function dayLabelInDO(dateKey: string, todayKey: string, yesterdayKey: string): string {
+  if (dateKey === todayKey) return "Hoy";
+  if (dateKey === yesterdayKey) return "Ayer";
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d, 12));
+  return new Intl.DateTimeFormat("es-DO", {
+    timeZone: DO_TZ,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(utc);
+}
+
+function parseTransitSplit(
+  m: Pick<InventoryMovement, "qty" | "transitQty" | "note" | "type">
+): { stock: number; transit: number } {
+  const explicit = Math.min(Math.max(0, Number(m.transitQty || 0)), m.qty);
+  if (m.transitQty != null && m.transitQty !== undefined) {
+    return { stock: Math.max(0, m.qty - explicit), transit: explicit };
+  }
+  const note = m.note || "";
+  const pair = note.match(
+    /(\d+)\s+en almacén\s*\+\s*(\d+)\s+apartadas en tránsito/i
+  );
+  if (pair) {
+    return { stock: Number(pair[1]), transit: Number(pair[2]) };
+  }
+  if (/apartadas en tránsito/i.test(note)) {
+    return { stock: 0, transit: m.qty };
+  }
+  return { stock: m.qty, transit: 0 };
+}
+
+/**
+ * Resumen por día (zona RD) de movimiento físico, reservas de almacén y tránsito.
+ */
+export async function getDailyInventorySummaries(
+  dayCount = 14
+): Promise<DailyInventorySummary[]> {
+  const snap = await getDb()
+    .collection("movements")
+    .orderBy("createdAt", "desc")
+    .limit(800)
+    .get();
+
+  const todayKey = dayKeyInDO(new Date().toISOString());
+  const yest = new Date();
+  yest.setDate(yest.getDate() - 1);
+  const yesterdayKey = dayKeyInDO(yest.toISOString());
+
+  const byDay = new Map<string, DailyInventorySummary>();
+  /** day -> quoteId -> accumulator */
+  const reserveAcc = new Map<
+    string,
+    Map<
+      string,
+      { units: number; transitUnits: number; amount: number; lastAt: string }
+    >
+  >();
+  /** day -> quoteIds confirmed / annulled (for money once per quote) */
+  const soldQuotes = new Map<string, Set<string>>();
+  const annulQuotes = new Map<string, Set<string>>();
+  const quoteIdsNeeded = new Set<string>();
+
+  type MovRow = InventoryMovement & { dayKey: string };
+
+  function ensure(date: string): DailyInventorySummary {
+    let row = byDay.get(date);
+    if (!row) {
+      row = {
+        date,
+        label: dayLabelInDO(date, todayKey, yesterdayKey),
+        physicalIn: 0,
+        physicalOut: 0,
+        reserveIn: 0,
+        reserveOut: 0,
+        transitIn: 0,
+        transitOut: 0,
+        events: 0,
+        reservedAmount: 0,
+        soldAmount: 0,
+        transitAmount: 0,
+        reservations: [],
+      };
+      byDay.set(date, row);
+    }
+    return row;
+  }
+
+  // Pre-create empty days so the board always shows continuity
+  for (let i = 0; i < dayCount; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    ensure(dayKeyInDO(d.toISOString()));
+  }
+
+  const pending: MovRow[] = [];
+  for (const doc of snap.docs) {
+    const m = { id: doc.id, ...doc.data() } as InventoryMovement;
+    const key = dayKeyInDO(m.createdAt);
+    if (!byDay.has(key)) continue;
+    pending.push({ ...m, dayKey: key });
+    if (m.quoteId) quoteIdsNeeded.add(m.quoteId);
+  }
+
+  type QuoteMeta = {
+    number: number;
+    customerName: string;
+    total: number;
+    unitByProduct: Map<string, number>;
+  };
+  const quoteMeta = new Map<string, QuoteMeta>();
+  await Promise.all(
+    [...quoteIdsNeeded].map(async (id) => {
+      const q = await getDb().collection("quotes").doc(id).get();
+      if (!q.exists) return;
+      const data = q.data()!;
+      let customerName = "Cliente";
+      if (data.customerId) {
+        const c = await getDb()
+          .collection("customers")
+          .doc(String(data.customerId))
+          .get();
+        if (c.exists) customerName = String(c.data()?.name || "Cliente");
+      }
+      const unitByProduct = new Map<string, number>();
+      for (const line of (data.lines || []) as QuoteLine[]) {
+        unitByProduct.set(line.productId, Number(line.unitPrice || 0));
+      }
+      quoteMeta.set(id, {
+        number: Number(data.number || 0),
+        customerName,
+        total: Number(data.total || 0),
+        unitByProduct,
+      });
+    })
+  );
+
+  function unitPrice(quoteId: string | null | undefined, productId: string): number {
+    if (!quoteId) return 0;
+    return quoteMeta.get(quoteId)?.unitByProduct.get(productId) || 0;
+  }
+
+  for (const m of pending) {
+    // Bitácora de precio: no afecta inventario ni totales del tablero diario.
+    if (m.type === "CAMBIO_PRECIO") continue;
+
+    const row = ensure(m.dayKey);
+    row.events += 1;
+    const split = parseTransitSplit(m);
+    const price = unitPrice(m.quoteId, m.productId);
+
+    switch (m.type) {
+      case "ENTRADA":
+        row.physicalIn += m.qty;
+        if (split.transit > 0) {
+          // Apartados convertidos a reserva de almacén (unidades)
+          row.transitOut += split.transit;
+          row.reserveIn += split.transit;
+        }
+        break;
+      case "ANULACION_VENTA":
+        row.physicalIn += m.qty;
+        if (m.quoteId) {
+          let set = annulQuotes.get(m.dayKey);
+          if (!set) {
+            set = new Set();
+            annulQuotes.set(m.dayKey, set);
+          }
+          set.add(m.quoteId);
+        }
+        break;
+      case "SALIDA":
+        row.physicalOut += m.qty;
+        break;
+      case "CONFIRMACION_VENTA":
+        row.physicalOut += m.qty;
+        if (m.quoteId) {
+          let set = soldQuotes.get(m.dayKey);
+          if (!set) {
+            set = new Set();
+            soldQuotes.set(m.dayKey, set);
+          }
+          set.add(m.quoteId);
+        }
+        break;
+      case "AJUSTE": {
+        const note = m.note || "";
+        if (note.includes("-") || /ajuste de inventario\s*\(-\d+/i.test(note)) {
+          row.physicalOut += m.qty;
+        } else {
+          row.physicalIn += m.qty;
+        }
+        break;
+      }
+      case "RESERVA": {
+        row.reserveIn += split.stock;
+        row.transitIn += split.transit;
+        const stockMoney = split.stock * price;
+        const transitMoney = split.transit * price;
+        row.reservedAmount += stockMoney;
+        row.transitAmount += transitMoney;
+        if (m.quoteId) {
+          let byQuote = reserveAcc.get(m.dayKey);
+          if (!byQuote) {
+            byQuote = new Map();
+            reserveAcc.set(m.dayKey, byQuote);
+          }
+          const prev = byQuote.get(m.quoteId) || {
+            units: 0,
+            transitUnits: 0,
+            amount: 0,
+            lastAt: m.createdAt,
+          };
+          prev.units += m.qty;
+          prev.transitUnits += split.transit;
+          prev.amount += stockMoney + transitMoney;
+          if (m.createdAt > prev.lastAt) prev.lastAt = m.createdAt;
+          byQuote.set(m.quoteId, prev);
+        }
+        break;
+      }
+      case "LIBERACION_RESERVA": {
+        row.reserveOut += split.stock;
+        row.transitOut += split.transit;
+        row.reservedAmount -= split.stock * price;
+        row.transitAmount -= split.transit * price;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  for (const [date, ids] of soldQuotes) {
+    const row = byDay.get(date);
+    if (!row) continue;
+    for (const id of ids) {
+      row.soldAmount += quoteMeta.get(id)?.total || 0;
+    }
+  }
+  for (const [date, ids] of annulQuotes) {
+    const row = byDay.get(date);
+    if (!row) continue;
+    for (const id of ids) {
+      row.soldAmount -= quoteMeta.get(id)?.total || 0;
+    }
+  }
+
+  for (const [date, byQuote] of reserveAcc) {
+    const row = byDay.get(date);
+    if (!row) continue;
+    const list: DailyReservationClient[] = [];
+    for (const [quoteId, acc] of byQuote) {
+      const meta = quoteMeta.get(quoteId);
+      list.push({
+        quoteId,
+        number: meta?.number || 0,
+        customerName: meta?.customerName || "Cliente",
+        units: acc.units,
+        transitUnits: acc.transitUnits,
+        amount: Math.round(acc.amount * 100) / 100,
+        lastAt: acc.lastAt,
+      });
+    }
+    list.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+    row.reservations = list;
+  }
+
+  // Round money fields
+  for (const row of byDay.values()) {
+    row.reservedAmount = Math.round(row.reservedAmount * 100) / 100;
+    row.soldAmount = Math.round(row.soldAmount * 100) / 100;
+    row.transitAmount = Math.round(row.transitAmount * 100) / 100;
+  }
+
+  return [...byDay.values()].sort((a, b) => b.date.localeCompare(a.date));
 }
 
 export async function listMovements(limit = 100): Promise<InventoryMovement[]> {

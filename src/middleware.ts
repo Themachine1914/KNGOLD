@@ -9,7 +9,9 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth;
   const isLogin = pathname.startsWith("/login");
   const isPublicApi =
-    pathname.startsWith("/api/auth") || pathname.startsWith("/api/cron");
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/cron") ||
+    pathname.startsWith("/api/provider");
 
   if (isPublicApi) return NextResponse.next();
 
@@ -28,6 +30,6 @@ export default auth((req) => {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icons|products|manifest.webmanifest).*)",
+    "/((?!_next/static|_next/image|favicon.ico|favicon.png|icons|brand|products|manifest.webmanifest|apple-icon.png|opengraph-image).*)",
   ],
 };

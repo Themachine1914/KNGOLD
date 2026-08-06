@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { adjustStock } from "@/lib/inventory";
 
 export async function POST(req: Request) {
@@ -7,8 +8,11 @@ export async function POST(req: Request) {
   if (!session?.user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
-  if (session.user.role !== "OWNER") {
-    return NextResponse.json({ error: "Solo el dueño puede ajustar stock" }, { status: 403 });
+  if (!isOpsManager(session.user.role)) {
+    return NextResponse.json(
+      { error: "Solo dueño o administrador puede ajustar stock" },
+      { status: 403 }
+    );
   }
 
   try {

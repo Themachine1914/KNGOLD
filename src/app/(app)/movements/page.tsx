@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { expireReservedQuotes, listMovements, movementDelta } from "@/lib/inventory";
 import { movementLabel, movementTone } from "@/lib/labels";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
@@ -9,7 +10,7 @@ import { es } from "date-fns/locale";
 
 export default async function MovementsPage() {
   const session = await auth();
-  if (session!.user.role !== "OWNER") redirect("/dashboard");
+  if (!isOpsManager(session!.user.role)) redirect("/dashboard");
 
   await expireReservedQuotes();
   const movements = await listMovements(120);
@@ -49,11 +50,19 @@ export default async function MovementsPage() {
                     {m.note ? <p className="mt-1 text-xs text-muted">{m.note}</p> : null}
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-lg font-bold leading-none text-ink">{delta.label}</p>
-                    <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                      {delta.availableFocus ? "Disp." : "Quedan"}
-                    </p>
-                    <p className="text-xl font-semibold leading-none">{remaining}</p>
+                    {m.type === "CAMBIO_PRECIO" ? (
+                      <p className="max-w-[9rem] text-right text-xs font-semibold leading-snug text-gold-dark">
+                        {m.note || "Precio actualizado"}
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-lg font-bold leading-none text-ink">{delta.label}</p>
+                        <p className="mt-1.5 text-[11px] font-medium tracking-wide text-muted">
+                          {delta.availableFocus ? "Disp." : "Quedan"}
+                        </p>
+                        <p className="text-xl font-semibold leading-none">{remaining}</p>
+                      </>
+                    )}
                   </div>
                 </div>
               </Card>

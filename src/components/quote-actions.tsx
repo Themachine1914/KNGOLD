@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "./ui";
 import { ConfirmPanel } from "./confirm-panel";
 import { formatRD } from "@/lib/pricing";
+import { shareQuotePdf } from "@/lib/share-quote-pdf";
 
 export function QuoteActions({
   quoteId,
@@ -12,23 +13,34 @@ export function QuoteActions({
   units,
   productCount,
   total,
+  number,
+  customerName,
+  customerPhone,
 }: {
   quoteId: string;
   status: string;
   units: number;
   productCount: number;
   total: number;
+  number: number;
+  customerName: string;
+  customerPhone?: string | null;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState<"confirm" | "cancel" | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [shareHint, setShareHint] = useState("");
 
-  if (status !== "RESERVED") return null;
+  const canConfirm = status === "RESERVED";
+  const canAnnul = status === "RESERVED" || status === "CONFIRMED";
+
+  if (!canConfirm && !canAnnul) return null;
 
   async function act(action: "confirm" | "cancel") {
     setLoading(true);
     setError("");
+    setShareHint("");
     try {
       const res = await fetch(`/api/quotes/${quoteId}/${action}`, {
         method: "POST",
@@ -39,6 +51,18 @@ export function QuoteActions({
         return;
       }
       setPending(null);
+
+      if (action === "confirm") {
+        setShareHint("Venta confirmada. Abriendo PDF para imprimir o enviar…");
+        await shareQuotePdf({
+          quoteId,
+          number,
+          customerName,
+          customerPhone,
+          totalText: formatRD(total),
+        });
+      }
+
       router.refresh();
     } catch {
       setError("Sin conexión. Revisa el internet e intenta de nuevo.");
@@ -55,12 +79,13 @@ export function QuoteActions({
           <>
             Saldrán <strong className="tabular-nums text-ink">{units}</strong>{" "}
             unidades de {productCount}{" "}
-            {productCount === 1 ? "producto" : "productos"} del stock físico, por{" "}
+            {productCount === 1 ? "electrodoméstico" : "electrodomésticos"} del stock
+            físico, por{" "}
             <strong className="tabular-nums text-ink">{formatRD(total)}</strong>.
-            Esto no se puede deshacer.
+            Después podrás imprimir o enviar el PDF.
           </>
         }
-        confirmLabel="Sí, confirmar venta"
+        confirmLabel="Sí, confirmar e imprimir PDF"
         loadingLabel="Confirmando…"
         loading={loading}
         error={error}
@@ -76,16 +101,24 @@ export function QuoteActions({
   if (pending === "cancel") {
     return (
       <ConfirmPanel
-        title="¿Cancelar la cotización?"
+        title={status === "CONFIRMED" ? "¿Anular la venta?" : "¿Anular la cotización?"}
         detail={
-          <>
-            Se liberarán las{" "}
-            <strong className="tabular-nums text-ink">{units}</strong> unidades
-            reservadas y volverán a estar disponibles para otros clientes.
-          </>
+          status === "CONFIRMED" ? (
+            <>
+              Se devolverán{" "}
+              <strong className="tabular-nums text-ink">{units}</strong> unidades
+              al stock físico y la cotización quedará anulada.
+            </>
+          ) : (
+            <>
+              Se liberarán las{" "}
+              <strong className="tabular-nums text-ink">{units}</strong> unidades
+              reservadas y volverán a estar disponibles.
+            </>
+          )
         }
-        confirmLabel="Sí, cancelar cotización"
-        loadingLabel="Cancelando…"
+        confirmLabel="Sí, anular"
+        loadingLabel="Anulando…"
         tone="danger"
         loading={loading}
         error={error}
@@ -100,22 +133,29 @@ export function QuoteActions({
 
   return (
     <div className="space-y-2">
-      <Button
-        type="button"
-        variant="gold"
-        className="w-full"
-        onClick={() => setPending("confirm")}
-      >
-        Confirmar venta
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        className="w-full text-danger"
-        onClick={() => setPending("cancel")}
-      >
-        Cancelar cotización
-      </Button>
+      {canConfirm ? (
+        <Button
+          type="button"
+          variant="gold"
+          className="w-full"
+          onClick={() => setPending("confirm")}
+        >
+          Confirmar venta
+        </Button>
+      ) : null}
+      {canAnnul ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full text-danger"
+          onClick={() => setPending("cancel")}
+        >
+          {status === "CONFIRMED" ? "Anular factura" : "Anular cotización"}
+        </Button>
+      ) : null}
+      {shareHint ? (
+        <p className="text-center text-xs text-muted">{shareHint}</p>
+      ) : null}
     </div>
   );
 }

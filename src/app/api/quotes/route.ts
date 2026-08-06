@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { createReservedQuote } from "@/lib/inventory";
 
 export async function POST(req: Request) {
@@ -13,6 +14,7 @@ export async function POST(req: Request) {
     const customer = body.customer || {};
     const lines = Array.isArray(body.lines) ? body.lines : [];
     const includeItbis = Boolean(body.includeItbis);
+    const canOfferPrice = isOpsManager(session.user.role);
 
     if (!customer.name || !String(customer.name).trim()) {
       return NextResponse.json({ error: "El cliente es obligatorio" }, { status: 400 });
@@ -29,10 +31,15 @@ export async function POST(req: Request) {
       },
       includeItbis,
       notes: body.notes ? String(body.notes) : undefined,
-      lines: lines.map((l: { productId: string; qty: number }) => ({
-        productId: String(l.productId),
-        qty: Number(l.qty),
-      })),
+      lines: lines.map(
+        (l: { productId: string; qty: number; unitPrice?: number }) => ({
+          productId: String(l.productId),
+          qty: Number(l.qty),
+          ...(canOfferPrice && l.unitPrice != null
+            ? { unitPrice: Number(l.unitPrice) }
+            : {}),
+        })
+      ),
     });
 
     return NextResponse.json({ ok: true, quote });

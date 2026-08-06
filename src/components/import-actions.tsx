@@ -52,7 +52,8 @@ export function ImportActions({
           <>
             Entrarán <strong className="tabular-nums text-ink">{units}</strong>{" "}
             unidades de {productCount}{" "}
-            {productCount === 1 ? "producto" : "productos"} al stock físico.
+            {productCount === 1 ? "electrodoméstico" : "electrodomésticos"} al stock
+            físico.
             {status === "ORDERED"
               ? " El pedido nunca se marcó en tránsito; se dará por llegado igual."
               : ""}{" "}

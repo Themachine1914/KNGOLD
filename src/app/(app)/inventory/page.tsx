@@ -1,8 +1,10 @@
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { getProductsWithAvailability } from "@/lib/inventory";
 import { formatRD } from "@/lib/pricing";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { AdjustStockForm } from "@/components/adjust-stock-form";
+import { EditProductPriceForm } from "@/components/edit-product-price-form";
 import { ProductThumb } from "@/components/product-thumb";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 
@@ -12,7 +14,7 @@ export default async function InventoryPage({
   searchParams: Promise<{ q?: string; type?: string }>;
 }) {
   const session = await auth();
-  const isOwner = session!.user.role === "OWNER";
+  const isManager = isOpsManager(session!.user.role);
   const params = await searchParams;
   const q = (params.q || "").toLowerCase().trim();
   const type = params.type || "";
@@ -35,9 +37,9 @@ export default async function InventoryPage({
       <PageHeader
         title="Inventario"
         subtitle={
-          isOwner
-            ? "Físico, reservado y disponible."
-            : "Disponible real para cotizar al cliente."
+          isManager
+            ? "Stock, precios de oferta y disponible para cotizar."
+            : "Disponible en almacén y en tránsito para apartar."
         }
       />
 
@@ -76,7 +78,7 @@ export default async function InventoryPage({
       </div>
 
       {products.length === 0 ? (
-        <EmptyState title="Sin productos" body="Prueba otra búsqueda." />
+        <EmptyState title="Sin electrodomésticos" body="Prueba otra búsqueda." />
       ) : (
         <div className="space-y-3">
           {products.map((p) => (
@@ -85,52 +87,83 @@ export default async function InventoryPage({
                 <div className="flex items-start gap-3 min-w-0">
                   <ProductThumb sku={p.sku} alt={p.name} />
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">
+                    <p className="text-xs font-medium tracking-wide text-gold-dark">
                       {p.type} · {p.sku}
                     </p>
                     <p className="mt-0.5 font-semibold text-ink">{p.name}</p>
                     <p className="text-sm text-muted">
                       {[p.description, p.color].filter(Boolean).join(" · ")}
                     </p>
-                    <p className="mt-1 text-sm font-semibold">{formatRD(p.netPrice)}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold">{formatRD(p.netPrice)}</p>
+                      {p.listPrice > p.netPrice ? (
+                        <>
+                          <span className="text-xs text-muted line-through">
+                            {formatRD(p.listPrice)}
+                          </span>
+                          <Badge tone="gold">Oferta</Badge>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
                 <Badge
                   tone={
-                    (p.available ?? 0) <= 0
+                    (p.availableTotal ?? p.available ?? 0) <= 0
                       ? "danger"
-                      : (p.available ?? 0) <= LOW_STOCK_THRESHOLD
+                      : (p.available ?? 0) <= 0 && (p.availableTransit ?? 0) > 0
                         ? "warn"
-                        : "success"
+                        : (p.available ?? 0) <= LOW_STOCK_THRESHOLD
+                          ? "warn"
+                          : "success"
                   }
                 >
-                  Disp. {p.available}
+                  Disp. {p.availableTotal ?? p.available}
                 </Badge>
               </div>
 
-              {isOwner ? (
-                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center text-xs">
-                  <div>
-                    <p className="text-muted">Físico</p>
-                    <p className="font-semibold">{p.stockOnHand}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted">Reservado</p>
-                    <p className="font-semibold text-gold-dark">{p.reserved}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted">Disponible</p>
-                    <p className="font-semibold text-success">{p.available}</p>
-                  </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border pt-3 text-center text-xs sm:grid-cols-4">
+                {isManager ? (
+                  <>
+                    <div>
+                      <p className="text-muted">Físico</p>
+                      <p className="font-semibold">{p.stockOnHand}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted">Reservado</p>
+                      <p className="font-semibold text-gold-dark">{p.reserved}</p>
+                    </div>
+                  </>
+                ) : null}
+                <div>
+                  <p className="text-muted">Almacén</p>
+                  <p className="font-semibold text-success">{p.available}</p>
                 </div>
+                <div>
+                  <p className="text-muted">Tránsito libre</p>
+                  <p className="font-semibold text-gold-dark">{p.availableTransit ?? 0}</p>
+                </div>
+              </div>
+              {(p.transitApartado ?? 0) > 0 ? (
+                <p className="mt-2 text-xs text-muted">
+                  {p.transitApartado} uds ya apartadas de lo que viene en camino.
+                </p>
               ) : null}
 
-              {isOwner ? (
-                <AdjustStockForm
-                  productId={p.id}
-                  sku={p.sku}
-                  stockOnHand={p.stockOnHand}
-                />
+              {isManager ? (
+                <>
+                  <EditProductPriceForm
+                    productId={p.id}
+                    sku={p.sku}
+                    listPrice={p.listPrice}
+                    netPrice={p.netPrice}
+                  />
+                  <AdjustStockForm
+                    productId={p.id}
+                    sku={p.sku}
+                    stockOnHand={p.stockOnHand}
+                  />
+                </>
               ) : null}
             </Card>
           ))}

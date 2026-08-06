@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { receiveImportOrder } from "@/lib/imports";
 
 export async function POST(
@@ -7,7 +8,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "OWNER") {
+  if (!session?.user || !isOpsManager(session.user.role)) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 

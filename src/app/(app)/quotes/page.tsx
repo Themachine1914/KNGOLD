@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { expireReservedQuotes, listQuotes } from "@/lib/inventory";
 import { formatRD } from "@/lib/pricing";
 import { quoteStatusLabel, quoteStatusTone } from "@/lib/labels";
@@ -9,24 +10,24 @@ import { es } from "date-fns/locale";
 
 export default async function QuotesPage() {
   const session = await auth();
-  const isOwner = session!.user.role === "OWNER";
+  const isOwner = isOpsManager(session!.user.role);
   await expireReservedQuotes();
   const quotes = await listQuotes(isOwner ? undefined : session!.user.id);
 
   return (
     <div>
       <PageHeader
-        title="Cotizaciones"
-        subtitle={isOwner ? "Todas las reservas del equipo." : "Tus cotizaciones y reservas."}
+        title="Pedidos"
+        subtitle={isOwner ? "Todas las reservas del equipo." : "Tus pedidos y reservas."}
         action={
           <Link href="/quotes/new">
-            <Button className="px-3 py-2 text-xs">Nueva</Button>
+            <Button className="px-3 py-2 text-xs">Nuevo pedido</Button>
           </Link>
         }
       />
 
       {quotes.length === 0 ? (
-        <EmptyState title="Aún no hay cotizaciones" body="Crea una al visitar un cliente." />
+        <EmptyState title="Aún no hay pedidos" body="Crea uno al visitar un cliente." />
       ) : (
         <div className="space-y-2">
           {quotes.map((q) => (
@@ -37,7 +38,7 @@ export default async function QuotesPage() {
                     <p className="font-semibold">#{q.number} · {q.customer?.name}</p>
                     <p className="text-sm text-muted">
                       {(q.lines || []).length} ítems · {formatRD(q.total)} ·{" "}
-                      {q.includeItbis ? "Con ITBIS" : "Sin ITBIS"}
+                      {q.includeItbis ? "Con comprobante" : "Sin comprobante"}
                     </p>
                     {isOwner ? (
                       <p className="mt-1 text-xs text-muted">{q.seller?.name}</p>
