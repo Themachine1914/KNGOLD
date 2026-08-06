@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { listActiveProducts } from "@/lib/imports";
 import { PageHeader } from "@/components/ui";
 import { NewImportForm } from "@/components/new-import-form";
 
 export default async function NewImportPage() {
   const session = await auth();
-  if (session!.user.role !== "OWNER") redirect("/imports");
+  if (!isOpsManager(session!.user.role)) redirect("/imports");
 
   const products = await listActiveProducts();
   const options = products.map((p) => ({

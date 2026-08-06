@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { publicErrorMessage } from "@/lib/api-error";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { updateImportStatus } from "@/lib/imports";
 
 export async function POST(
@@ -8,7 +8,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "OWNER") {
+  if (!session?.user || !isOpsManager(session.user.role)) {
     return NextResponse.json({ error: "No autorizado" }, { status: 403 });
   }
 
@@ -17,7 +17,9 @@ export async function POST(
     const order = await updateImportStatus(id, "IN_TRANSIT");
     return NextResponse.json({ ok: true, import: order });
   } catch (e) {
-    const { message, status } = publicErrorMessage(e);
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Error" },
+      { status: 400 }
+    );
   }
 }

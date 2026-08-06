@@ -42,6 +42,6 @@ export const config = {
   // Las barras finales importan: sin ellas, una ruta futura como /apidocs
   // o /products-nuevos se saltaría el proxy por coincidencia de prefijo.
   matcher: [
-    "/((?!api/|_next/|favicon.ico|icons/|products/|manifest.webmanifest).*)",
+    "/((?!api/|_next/|favicon.ico|favicon.png|icons/|brand/|products/|manifest.webmanifest|apple-icon.png|opengraph-image).*)",
   ],
 };

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { createReservedQuote } from "@/lib/inventory";
-import { firstIssue, quoteInputSchema } from "@/lib/validation";
-import { publicErrorMessage } from "@/lib/api-error";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -11,24 +10,43 @@ export async function POST(req: Request) {
   }
 
   try {
-    const parsed = quoteInputSchema.safeParse(await req.json());
-    if (!parsed.success) {
-      return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
+    const body = await req.json();
+    const customer = body.customer || {};
+    const lines = Array.isArray(body.lines) ? body.lines : [];
+    const includeItbis = Boolean(body.includeItbis);
+    const canOfferPrice = isOpsManager(session.user.role);
+
+    if (!customer.name || !String(customer.name).trim()) {
+      return NextResponse.json({ error: "El cliente es obligatorio" }, { status: 400 });
     }
-    // `existingId` lo acepta el esquema pero la capa de datos aún no lo usa:
-    // hoy toda cotización crea un cliente nuevo.
-    const { existingId, ...customer } = parsed.data.customer;
-    void existingId;
 
     const quote = await createReservedQuote({
       sellerId: session.user.id,
-      ...parsed.data,
-      customer,
+      customer: {
+        name: String(customer.name).trim(),
+        rnc: customer.rnc ? String(customer.rnc) : undefined,
+        phone: customer.phone ? String(customer.phone) : undefined,
+        address: customer.address ? String(customer.address) : undefined,
+        email: customer.email ? String(customer.email) : undefined,
+      },
+      includeItbis,
+      notes: body.notes ? String(body.notes) : undefined,
+      lines: lines.map(
+        (l: { productId: string; qty: number; unitPrice?: number }) => ({
+          productId: String(l.productId),
+          qty: Number(l.qty),
+          ...(canOfferPrice && l.unitPrice != null
+            ? { unitPrice: Number(l.unitPrice) }
+            : {}),
+        })
+      ),
     });
 
     return NextResponse.json({ ok: true, quote });
   } catch (e) {
-    const { message, status } = publicErrorMessage(e);
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Error" },
+      { status: 400 }
+    );
   }
 }

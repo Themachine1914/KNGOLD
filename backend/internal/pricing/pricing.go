@@ -1,7 +1,5 @@
 package pricing
 
-import "math"
-
 const ITBISRate = 0.18
 
 type Totals struct {
@@ -10,79 +8,22 @@ type Totals struct {
 	Total       float64 `json:"total"`
 }
 
+// CalcQuoteTotals keeps the same total with or without comprobante.
+// When includeITBIS is true, ITBIS 18% is extracted for display only.
 func CalcQuoteTotals(lineTotals []float64, includeITBIS bool) Totals {
-	var sub float64
+	var sum float64
 	for _, v := range lineTotals {
-		sub += v
+		sum += v
 	}
-	sub = Round2(sub)
-	itbis := 0.0
-	if includeITBIS {
-		itbis = Round2(sub * ITBISRate)
+	total := Round2(sum)
+	if !includeITBIS {
+		return Totals{Subtotal: total, ITBISAmount: 0, Total: total}
 	}
-	return Totals{
-		Subtotal:    sub,
-		ITBISAmount: itbis,
-		Total:       Round2(sub + itbis),
-	}
+	itbis := Round2(total * ITBISRate / (1 + ITBISRate))
+	sub := Round2(total - itbis)
+	return Totals{Subtotal: sub, ITBISAmount: itbis, Total: total}
 }
 
 func Round2(n float64) float64 {
-	return math.Round((n+1e-9)*100) / 100
-}
-
-func FormatRD(amount float64) string {
-	neg := amount < 0
-	if neg {
-		amount = -amount
-	}
-	intPart := int64(amount)
-	frac := int64(math.Round((amount-float64(intPart))*100))
-	if frac == 100 {
-		intPart++
-		frac = 0
-	}
-	s := formatIntWithCommas(intPart) + "." + pad2(frac)
-	if neg {
-		return "-RD$" + s
-	}
-	return "RD$" + s
-}
-
-func formatIntWithCommas(n int64) string {
-	if n < 1000 {
-		return itoa(n)
-	}
-	return formatIntWithCommas(n/1000) + "," + pad3(n%1000)
-}
-
-func itoa(n int64) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
-}
-
-func pad2(n int64) string {
-	if n < 10 {
-		return "0" + itoa(n)
-	}
-	return itoa(n)
-}
-
-func pad3(n int64) string {
-	if n < 10 {
-		return "00" + itoa(n)
-	}
-	if n < 100 {
-		return "0" + itoa(n)
-	}
-	return itoa(n)
+	return float64(int(n*100+0.5)) / 100
 }

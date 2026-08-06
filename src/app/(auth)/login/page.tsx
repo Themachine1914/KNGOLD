@@ -39,6 +39,14 @@ function LoginForm() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-center px-5 py-10">
       <div className="mb-8">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/brand/logo.png"
+          alt="KN GOLD"
+          width={112}
+          height={112}
+          className="mb-4 h-28 w-28 object-contain"
+        />
         <p
           className="text-4xl text-ink"
           style={{ fontFamily: "var(--font-brand), serif" }}
@@ -80,7 +88,7 @@ function LoginForm() {
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
-              className="absolute inset-y-0 right-0 px-3 text-xs font-semibold uppercase tracking-wide text-muted"
+              className="absolute inset-y-0 right-0 px-3 text-xs font-medium tracking-wide text-muted"
             >
               {showPassword ? "Ocultar" : "Ver"}
             </button>

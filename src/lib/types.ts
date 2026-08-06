@@ -1,4 +1,4 @@
-export type Role = "OWNER" | "SELLER";
+export type Role = "OWNER" | "ADMIN" | "SELLER";
 
 export type QuoteStatus =
   | "DRAFT"
@@ -13,7 +13,9 @@ export type MovementType =
   | "AJUSTE"
   | "RESERVA"
   | "LIBERACION_RESERVA"
-  | "CONFIRMACION_VENTA";
+  | "CONFIRMACION_VENTA"
+  | "ANULACION_VENTA"
+  | "CAMBIO_PRECIO";
 
 export type ImportStatus = "ORDERED" | "IN_TRANSIT" | "ARRIVED" | "CANCELLED";
 
@@ -24,8 +26,19 @@ export type User = {
   passwordHash: string;
   role: Role;
   active: boolean;
+  /** Acceso temporal del proveedor; no cuenta en el cupo del plan. */
+  isSupport?: boolean;
+  /** ISO: si está vencido, el login falla y se desactiva. */
+  expiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+/** Cupo comercial: usuarios activos del plan (vendedores), además del dueño. */
+export type LicenseSettings = {
+  maxUsers: number;
+  updatedAt: string;
+  note?: string | null;
 };
 
 export type Product = {
@@ -42,6 +55,14 @@ export type Product = {
   active: boolean;
   reserved?: number;
   available?: number;
+  /** Unidades en pedidos ORDERED / IN_TRANSIT */
+  inTransit?: number;
+  /** Unidades ya apartadas de ese tránsito */
+  transitApartado?: number;
+  /** Tránsito libre para apartar */
+  availableTransit?: number;
+  /** Físico disponible + tránsito apartable */
+  availableTotal?: number;
 };
 
 export type Customer = {
@@ -57,6 +78,8 @@ export type QuoteLine = {
   id: string;
   productId: string;
   qty: number;
+  /** Porción de qty apartada de importaciones en camino (no está en almacén aún) */
+  transitQty?: number;
   unitPrice: number;
   lineTotal: number;
   product?: Product;
@@ -86,6 +109,11 @@ export type InventoryMovement = {
   productId: string;
   type: MovementType;
   qty: number;
+  /**
+   * En RESERVA/LIBERACION: unidades del movimiento que son de tránsito.
+   * En ENTRADA: apartados de tránsito convertidos a reserva de almacén.
+   */
+  transitQty?: number;
   stockAfter: number;
   availableAfter: number;
   quoteId?: string | null;
@@ -97,11 +125,46 @@ export type InventoryMovement = {
   quote?: { number: number } | null;
 };
 
+export type DailyReservationClient = {
+  quoteId: string;
+  number: number;
+  customerName: string;
+  units: number;
+  transitUnits: number;
+  /** Dinero de lo reservado/apartado ese día en esta cotización */
+  amount: number;
+  lastAt: string;
+};
+
+export type DailyInventorySummary = {
+  date: string;
+  label: string;
+  physicalIn: number;
+  physicalOut: number;
+  reserveIn: number;
+  reserveOut: number;
+  transitIn: number;
+  transitOut: number;
+  events: number;
+  /** Dinero neto reservado de almacén ese día */
+  reservedAmount: number;
+  /** Dinero facturado (ventas confirmadas − anulaciones) ese día */
+  soldAmount: number;
+  /** Dinero neto apartado en tránsito ese día */
+  transitAmount: number;
+  /** Clientes que reservaron / apartaron ese día */
+  reservations: DailyReservationClient[];
+};
+
 export type ImportOrderLine = {
   id: string;
   productId: string;
   qty: number;
   product?: Product;
+  /** Apartados activos del producto (todas las cotizaciones) */
+  productApartado?: number;
+  /** Tránsito libre del producto para apartar */
+  productLibre?: number;
 };
 
 export type ImportOrder = {

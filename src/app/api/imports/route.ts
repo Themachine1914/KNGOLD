@@ -1,41 +1,51 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { createImportOrder } from "@/lib/imports";
-import { firstIssue, importInputSchema } from "@/lib/validation";
-import { publicErrorMessage } from "@/lib/api-error";
+import type { ImportStatus } from "@/lib/types";
 
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
-  if (session.user.role !== "OWNER") {
-    return NextResponse.json({ error: "Solo el dueño registra importaciones" }, { status: 403 });
+  if (!isOpsManager(session.user.role)) {
+    return NextResponse.json({ error: "Solo dueño o administrador registra importaciones" }, { status: 403 });
   }
 
   try {
-    const parsed = importInputSchema.safeParse(await req.json());
-    if (!parsed.success) {
-      return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
+    const body = await req.json();
+    const lines = Array.isArray(body.lines) ? body.lines : [];
+    const etaRaw = String(body.eta || "");
+    if (!etaRaw) {
+      return NextResponse.json({ error: "Fecha ETA requerida" }, { status: 400 });
     }
-    const { eta: etaRaw, ...rest } = parsed.data;
 
-    // Con la Z el ancla es UTC. Sin ella se interpretaba en la zona del
-    // servidor (UTC en Vercel, UTC-4 aquí) y la ETA se corría un día.
-    const eta = new Date(`${etaRaw}T12:00:00Z`);
+    const eta = new Date(`${etaRaw}T12:00:00`);
     if (Number.isNaN(eta.getTime())) {
       return NextResponse.json({ error: "Fecha inválida" }, { status: 400 });
     }
 
+    const status: ImportStatus =
+      body.status === "IN_TRANSIT" ? "IN_TRANSIT" : "ORDERED";
+
     const order = await createImportOrder({
       createdById: session.user.id,
-      ...rest,
+      supplier: body.supplier ? String(body.supplier) : undefined,
       eta,
+      notes: body.notes ? String(body.notes) : undefined,
+      status,
+      lines: lines.map((l: { productId: string; qty: number }) => ({
+        productId: String(l.productId),
+        qty: Number(l.qty),
+      })),
     });
 
     return NextResponse.json({ ok: true, import: order });
   } catch (e) {
-    const { message, status } = publicErrorMessage(e);
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Error" },
+      { status: 400 }
+    );
   }
 }

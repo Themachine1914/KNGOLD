@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { publicErrorMessage } from "@/lib/api-error";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { cancelQuote, getQuote } from "@/lib/inventory";
 
 export async function POST(
@@ -17,7 +17,7 @@ export async function POST(
   if (!existing) {
     return NextResponse.json({ error: "No encontrada" }, { status: 404 });
   }
-  if (session.user.role !== "OWNER" && existing.sellerId !== session.user.id) {
+  if (!isOpsManager(session.user.role) && existing.sellerId !== session.user.id) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
@@ -25,7 +25,9 @@ export async function POST(
     await cancelQuote(id, session.user.id);
     return NextResponse.json({ ok: true });
   } catch (e) {
-    const { message, status } = publicErrorMessage(e);
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Error" },
+      { status: 400 }
+    );
   }
 }

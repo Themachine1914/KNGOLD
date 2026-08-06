@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Button, Card, Input, Label, StickyBar } from "./ui";
 import { QtyStepper } from "./qty-stepper";
 import { ProductThumb } from "./product-thumb";
-import { errorMessage, postJson } from "@/lib/client-fetch";
 
 type ProductOpt = {
   id: string;
@@ -53,28 +52,36 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
       return;
     }
     if (!selected.length) {
-      setError("Agrega al menos un producto.");
+      setError("Agrega al menos un electrodoméstico.");
       return;
     }
     setLoading(true);
     setError("");
     try {
-      const data = await postJson<{ import: { id: string } }>("/api/imports", {
-        supplier,
-        eta,
-        notes,
-        status,
-        lines: selected.map((l) => ({
-          productId: l.product.id,
-          qty: l.qty,
-        })),
+      const res = await fetch("/api/imports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supplier,
+          eta,
+          notes,
+          status,
+          lines: selected.map((l) => ({
+            productId: l.product.id,
+            qty: l.qty,
+          })),
+        }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "No se pudo crear el pedido");
+        return;
+      }
       router.push(`/imports/${data.import.id}`);
       router.refresh();
-      // Igual que en cotizaciones: no liberamos el botón hasta navegar, o un
-      // segundo toque registra el pedido dos veces.
-    } catch (e) {
-      setError(errorMessage(e));
+    } catch {
+      setError("Sin conexión. Revisa el internet e intenta de nuevo.");
+    } finally {
       setLoading(false);
     }
   }
@@ -102,7 +109,7 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
           />
         </div>
         <div role="group" aria-label="Estado del pedido">
-          <p className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">
+          <p className="mb-1.5 block text-xs font-medium tracking-wide text-muted">
             Estado
           </p>
           <div className="grid grid-cols-2 gap-2">
@@ -144,12 +151,12 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
       </Card>
 
       <Card className="space-y-2">
-        <p className="font-semibold text-ink">Productos del pedido</p>
+        <p className="font-semibold text-ink">Electrodomésticos del pedido</p>
         <Input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Buscar producto..."
-          aria-label="Buscar producto"
+          placeholder="Buscar electrodoméstico..."
+          aria-label="Buscar electrodoméstico"
         />
         <div className="space-y-2">
           {filtered.map((p) => {
@@ -199,10 +206,12 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
       <StickyBar>
         <div className="mb-2 flex items-end justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+            <p className="text-xs font-medium tracking-wide text-muted">
               {selected.length === 0
-                ? "Sin productos"
-                : `${selected.length} ${selected.length === 1 ? "producto" : "productos"}`}
+                ? "Sin electrodomésticos"
+                : `${selected.length} ${
+                    selected.length === 1 ? "electrodoméstico" : "electrodomésticos"
+                  }`}
             </p>
             <p className="text-2xl font-semibold tabular-nums text-ink">
               {totalUnits} uds

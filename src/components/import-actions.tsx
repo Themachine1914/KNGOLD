@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "./ui";
 import { ConfirmPanel } from "./confirm-panel";
-import { errorMessage, postJson } from "@/lib/client-fetch";
 
 export function ImportActions({
   importId,
@@ -28,11 +27,18 @@ export function ImportActions({
     setLoading(action);
     setError("");
     try {
-      await postJson(`/api/imports/${importId}/${action}`);
+      const res = await fetch(`/api/imports/${importId}/${action}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "No se pudo completar la acción");
+        return;
+      }
       setPending(null);
       router.refresh();
-    } catch (e) {
-      setError(errorMessage(e));
+    } catch {
+      setError("Sin conexión. Revisa el internet e intenta de nuevo.");
     } finally {
       setLoading(null);
     }
@@ -46,7 +52,8 @@ export function ImportActions({
           <>
             Entrarán <strong className="tabular-nums text-ink">{units}</strong>{" "}
             unidades de {productCount}{" "}
-            {productCount === 1 ? "producto" : "productos"} al stock físico.
+            {productCount === 1 ? "electrodoméstico" : "electrodomésticos"} al stock
+            físico.
             {status === "ORDERED"
               ? " El pedido nunca se marcó en tránsito; se dará por llegado igual."
               : ""}{" "}

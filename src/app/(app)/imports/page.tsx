@@ -1,25 +1,26 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { listImports } from "@/lib/imports";
 import { importStatusLabel, importStatusTone } from "@/lib/labels";
-import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
+import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui";
 import { format, differenceInCalendarDays, isPast, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 export default async function ImportsPage() {
   const session = await auth();
-  const isOwner = session!.user.role === "OWNER";
+  const isOwner = isOpsManager(session!.user.role);
   const imports = await listImports();
 
   return (
     <div>
       <PageHeader
         title="Importaciones"
-        subtitle="Pedidos en camino y fecha estimada de llegada."
+        subtitle="Mercancía en camino y fecha estimada de llegada."
         action={
           isOwner ? (
-            <Link href="/imports/new" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gold px-4 py-3 text-sm font-semibold text-ink transition hover:bg-gold-dark hover:text-white">
-              Nueva
+            <Link href="/imports/new">
+              <Button className="px-3 py-2 text-xs">Nueva</Button>
             </Link>
           ) : null
         }
@@ -51,7 +52,7 @@ export default async function ImportsPage() {
                         {item.supplier ? ` · ${item.supplier}` : ""}
                       </p>
                       <p className="text-sm text-muted">
-                        {(item.lines || []).length} productos · {units} unidades
+                        {(item.lines || []).length} electrodomésticos · {units} unidades
                       </p>
                       <p className="mt-1 text-sm font-semibold text-ink">
                         ETA {format(eta, "dd MMM yyyy", { locale: es })}

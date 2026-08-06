@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { getQuote } from "@/lib/inventory";
 import { QuoteDocument } from "@/lib/pdf/quote-document";
 
@@ -18,7 +19,7 @@ export async function GET(
   if (!quote) {
     return NextResponse.json({ error: "No encontrada" }, { status: 404 });
   }
-  if (session.user.role !== "OWNER" && quote.sellerId !== session.user.id) {
+  if (!isOpsManager(session.user.role) && quote.sellerId !== session.user.id) {
     return NextResponse.json({ error: "Sin permiso" }, { status: 403 });
   }
 
@@ -40,6 +41,7 @@ export async function GET(
     seller: { name: quote.seller?.name || "" },
     lines: (quote.lines || []).map((line) => ({
       qty: line.qty,
+      transitQty: line.transitQty || 0,
       unitPrice: line.unitPrice,
       lineTotal: line.lineTotal,
       product: {

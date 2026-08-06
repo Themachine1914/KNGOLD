@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
+import { isOpsManager, isOwner, roleLabel } from "@/lib/roles";
+import type { Role } from "@/lib/types";
 
 function Icon({ name }: { name: string }) {
   const paths: Record<string, string> = {
@@ -33,16 +35,16 @@ const ownerLinks = [
   { href: "/dashboard", label: "Inicio", icon: "home" },
   { href: "/inventory", label: "Stock", icon: "stock" },
   { href: "/movements", label: "Movim.", icon: "movements", full: "Movimientos" },
-  { href: "/imports", label: "Pedidos", icon: "imports" },
-  { href: "/quotes", label: "Cotiz.", icon: "quotes", full: "Cotizaciones" },
+  { href: "/imports", label: "Importaciones", icon: "imports" },
+  { href: "/quotes", label: "Pedido", icon: "quotes", full: "Pedidos" },
 ];
 
 const sellerLinks = [
   { href: "/dashboard", label: "Inicio", icon: "home" },
   { href: "/inventory", label: "Stock", icon: "stock" },
-  { href: "/imports", label: "Pedidos", icon: "imports" },
-  { href: "/quotes", label: "Cotiz.", icon: "quotes", full: "Cotizaciones" },
-  { href: "/quotes/new", label: "Nueva", icon: "new", full: "Nueva cotización", cta: true },
+  { href: "/imports", label: "Importaciones", icon: "imports" },
+  { href: "/quotes", label: "Pedido", icon: "quotes", full: "Pedidos" },
+  { href: "/quotes/new", label: "Nuevo pedido", icon: "new", full: "Nuevo pedido", cta: true },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -56,9 +58,9 @@ function isActive(pathname: string, href: string) {
   return pathname === href;
 }
 
-export function BottomNav({ role }: { role: "OWNER" | "SELLER" }) {
+export function BottomNav({ role }: { role: Role }) {
   const pathname = usePathname();
-  const links = role === "OWNER" ? ownerLinks : sellerLinks;
+  const links = isOpsManager(role) ? ownerLinks : sellerLinks;
 
   return (
     <nav
@@ -86,10 +88,12 @@ export function BottomNav({ role }: { role: "OWNER" | "SELLER" }) {
               href={link.href}
               aria-current={active ? "page" : undefined}
               aria-label={"full" in link ? link.full : link.label}
-              className={`flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-[11px] font-semibold ${tone}`}
+              className={`flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 font-semibold leading-tight ${
+                cta ? "text-[9px]" : "text-[10px]"
+              } ${tone}`}
             >
               <Icon name={link.icon} />
-              {link.label}
+              <span className="text-center">{link.label}</span>
             </Link>
           );
         })}
@@ -103,7 +107,7 @@ export function TopBar({
   role,
 }: {
   name?: string | null;
-  role: "OWNER" | "SELLER";
+  role: Role;
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border/80 bg-[#151311] text-white">
@@ -115,17 +119,27 @@ export function TopBar({
           >
             KN <span className="text-gold">GOLD</span>
           </p>
-          <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-white/75">
-            {role === "OWNER" ? "Dueño" : "Vendedor"} · {name}
+          <p className="mt-1 text-[11px] tracking-wide text-white/75">
+            {roleLabel(role)} · {name}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          className="min-h-11 rounded-lg border border-white/25 px-3 py-1.5 text-xs font-semibold text-white"
-        >
-          Salir
-        </button>
+        <div className="flex items-center gap-2">
+          {isOwner(role) ? (
+            <Link
+              href="/settings"
+              className="min-h-11 rounded-lg border border-white/25 px-3 py-1.5 text-xs font-semibold text-white"
+            >
+              Configuración
+            </Link>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="min-h-11 rounded-lg border border-white/25 px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            Salir
+          </button>
+        </div>
       </div>
     </header>
   );

@@ -1,5 +1,10 @@
 import { getDb, newId } from "./firebase";
-import { getReservedQty } from "./inventory";
+import {
+  convertTransitApartadosOnArrival,
+  getInTransitQty,
+  getReservedQty,
+  getTransitApartadoQty,
+} from "./inventory";
 import type { ImportOrder, ImportOrderLine, ImportStatus, Product, User } from "./types";
 
 async function nextImportNumber(): Promise<number> {
@@ -17,9 +22,6 @@ function assertProduct(raw: Record<string, unknown>, id: string): Product {
   const p = { id, ...raw } as Product;
   for (const field of ["stockOnHand", "netPrice", "listPrice"] as const) {
     if (!Number.isFinite(Number(p[field]))) {
-      // Sin esto, `available` sale NaN y `line.qty > NaN` es false: la
-      // validación de stock se salta y se reserva cantidad ilimitada, con
-      // totales NaN guardados en la base.
       throw new Error(
         `El producto ${p.sku ?? id} tiene el campo ${field} inválido o vacío.`
       );
@@ -38,11 +40,6 @@ async function getProduct(id: string): Promise<Product> {
  * Reclama un pedido: comprueba y cambia su estado en una sola operación
  * atómica. Devuelve el pedido si el reclamo fue nuestro, o `null` si otro
  * proceso llegó primero.
- *
- * Sin esto, comprobar el estado y escribir eran dos pasos sueltos: un doble
- * toque sobre "Confirmar llegada" ingresaba la mercancía dos veces, y tocar
- * "Cancelar" mientras corría la llegada dejaba el pedido cancelado con el
- * stock ya sumado.
  */
 async function claimImport(
   importId: string,
@@ -75,8 +72,6 @@ export async function createImportOrder(input: {
 }): Promise<ImportOrder> {
   if (!input.lines.length) throw new Error("El pedido debe tener al menos un producto.");
 
-  // Igual que en cotizaciones: la API acepta JSON arbitrario, así que dos
-  // líneas del mismo producto se suman en una sola.
   const wanted = new Map<string, number>();
   for (const line of input.lines) {
     if (!Number.isInteger(line.qty) || line.qty <= 0) {
@@ -125,20 +120,17 @@ export async function receiveImportOrder(importId: string, userId: string) {
   const db = getDb();
   const iref = db.collection("imports").doc(importId);
 
-  // Todo en UNA transacción. Antes se reclamaba el pedido y después se sumaba
-  // el stock línea por línea, cada una por su cuenta: si el proceso moría a la
-  // mitad, el pedido quedaba ARRIVED con la mercancía a medio entrar, y nada
-  // lo volvía a intentar.
-  //
-  // Firestore exige todas las lecturas antes de cualquier escritura.
   const preview = await iref.get();
   if (!preview.exists) throw new Error("Pedido no encontrado");
   const reservedByProduct = new Map<string, number>();
-  for (const line of ((preview.data()?.lines || []) as ImportOrderLine[])) {
+  for (const line of (preview.data()?.lines || []) as ImportOrderLine[]) {
     if (!reservedByProduct.has(line.productId)) {
       reservedByProduct.set(line.productId, await getReservedQty(line.productId));
     }
   }
+
+  const orderNumber = Number(preview.data()?.number || 0);
+  const arrivedLines = (preview.data()?.lines || []) as ImportOrderLine[];
 
   await db.runTransaction(async (tx) => {
     const idoc = await tx.get(iref);
@@ -186,15 +178,40 @@ export async function receiveImportOrder(importId: string, userId: string) {
     });
   });
 
+  // Después del ingreso atómico: apartados en tránsito → reserva de almacén.
+  for (const line of arrivedLines) {
+    const converted = await convertTransitApartadosOnArrival(line.productId, line.qty);
+    if (converted <= 0) continue;
+    // El movimiento ENTRADA ya quedó escrito; no reescribimos histórico aquí.
+    void orderNumber;
+  }
+
   return getImport(importId);
 }
 
 export async function cancelImportOrder(importId: string) {
+  const current = await getImport(importId);
+  if (!current) throw new Error("Pedido no encontrado");
+
+  if (isOpen(current)) {
+    for (const line of current.lines || []) {
+      const apartado = await getTransitApartadoQty(line.productId);
+      if (apartado <= 0) continue;
+      const incoming = await getInTransitQty(line.productId);
+      const remainingAfterCancel = incoming - line.qty;
+      if (apartado > remainingAfterCancel) {
+        throw new Error(
+          `No se puede cancelar: hay ${apartado} uds apartadas de este producto en cotizaciones. Anula o edita esas cotizaciones primero.`
+        );
+      }
+    }
+  }
+
   const claimed = await claimImport(importId, isOpen, { status: "CANCELLED" });
   if (!claimed) {
-    const current = await getImport(importId);
+    const again = await getImport(importId);
     throw new Error(
-      current?.status === "ARRIVED"
+      again?.status === "ARRIVED"
         ? "No se puede cancelar un pedido ya recibido."
         : "Este pedido ya estaba cancelado."
     );
@@ -226,6 +243,12 @@ export async function getImport(id: string): Promise<ImportOrder | null> {
     for (const line of order.lines) {
       try {
         line.product = await getProduct(line.productId);
+        if (order.status === "ORDERED" || order.status === "IN_TRANSIT") {
+          const apartado = await getTransitApartadoQty(line.productId);
+          const incoming = await getInTransitQty(line.productId);
+          line.productApartado = apartado;
+          line.productLibre = Math.max(0, incoming - apartado);
+        }
       } catch {
         /* ignore */
       }

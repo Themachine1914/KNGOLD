@@ -3,18 +3,15 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, Input, Label } from "./ui";
-import { errorMessage, postJson } from "@/lib/client-fetch";
 
 export function AdjustStockForm({
   productId,
   sku,
   stockOnHand,
-  reserved,
 }: {
   productId: string;
   sku: string;
   stockOnHand: number;
-  reserved: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -44,26 +41,23 @@ export function AdjustStockForm({
       setError(`No puedes sacar ${qty}: solo hay ${stockOnHand} en físico.`);
       return;
     }
-    // El servidor también rechaza bajar del total reservado; avisarlo aquí
-    // evita que el dueño lo descubra después de enviar.
-    if (result < reserved) {
-      setError(
-        `No puedes bajar de ${reserved}: hay ${reserved} unidades apartadas en cotizaciones.`
-      );
-      return;
-    }
     setLoading(true);
     setError("");
     try {
-      await postJson("/api/inventory/adjust", {
-        productId,
-        qtyDelta: delta,
-        note,
+      const res = await fetch("/api/inventory/adjust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, qtyDelta: delta, note }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "No se pudo ajustar");
+        return;
+      }
       close();
       router.refresh();
-    } catch (e) {
-      setError(errorMessage(e));
+    } catch {
+      setError("Sin conexión. Revisa el internet e intenta de nuevo.");
     } finally {
       setLoading(false);
     }
@@ -84,7 +78,7 @@ export function AdjustStockForm({
 
   return (
     <form onSubmit={submit} className="mt-3 space-y-3 rounded-xl bg-background p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+      <p className="text-xs font-medium tracking-wide text-muted">
         Ajuste de {sku}
       </p>
 
@@ -135,7 +129,7 @@ export function AdjustStockForm({
       </div>
 
       <div className="rounded-xl border border-border bg-white px-3 py-2.5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+        <p className="text-xs font-medium tracking-wide text-muted">
           Quedará en físico
         </p>
         <p className="mt-0.5 text-lg font-semibold tabular-nums text-ink">

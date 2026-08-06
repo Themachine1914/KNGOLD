@@ -4,7 +4,7 @@ export function quoteStatusLabel(status: QuoteStatus): string {
   const map: Record<QuoteStatus, string> = {
     DRAFT: "Borrador",
     RESERVED: "Reservada",
-    CONFIRMED: "Confirmada",
+    CONFIRMED: "Facturada",
     CANCELLED: "Cancelada",
     EXPIRED: "Expirada",
   };
@@ -32,6 +32,8 @@ export function movementLabel(type: MovementType): string {
     RESERVA: "Reserva",
     LIBERACION_RESERVA: "Liberación",
     CONFIRMACION_VENTA: "Venta confirmada",
+    ANULACION_VENTA: "Venta anulada",
+    CAMBIO_PRECIO: "Cambio de precio",
   };
   return map[type];
 }
@@ -39,9 +41,15 @@ export function movementLabel(type: MovementType): string {
 export function movementTone(
   type: MovementType
 ): "neutral" | "gold" | "success" | "danger" | "warn" {
-  if (type === "ENTRADA" || type === "LIBERACION_RESERVA") return "success";
+  if (
+    type === "ENTRADA" ||
+    type === "LIBERACION_RESERVA" ||
+    type === "ANULACION_VENTA"
+  ) {
+    return "success";
+  }
   if (type === "SALIDA" || type === "CONFIRMACION_VENTA") return "danger";
-  if (type === "RESERVA") return "gold";
+  if (type === "RESERVA" || type === "CAMBIO_PRECIO") return "gold";
   return "warn";
 }
 

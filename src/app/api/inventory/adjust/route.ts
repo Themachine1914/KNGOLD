@@ -1,32 +1,42 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isOpsManager } from "@/lib/roles";
 import { adjustStock } from "@/lib/inventory";
-import { adjustInputSchema, firstIssue } from "@/lib/validation";
-import { publicErrorMessage } from "@/lib/api-error";
 
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
-  if (session.user.role !== "OWNER") {
-    return NextResponse.json({ error: "Solo el dueño puede ajustar stock" }, { status: 403 });
+  if (!isOpsManager(session.user.role)) {
+    return NextResponse.json(
+      { error: "Solo dueño o administrador puede ajustar stock" },
+      { status: 403 }
+    );
   }
 
   try {
-    const parsed = adjustInputSchema.safeParse(await req.json());
-    if (!parsed.success) {
-      return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
+    const body = await req.json();
+    const productId = String(body.productId || "");
+    const qtyDelta = Number(body.qtyDelta);
+    const note = body.note ? String(body.note) : undefined;
+
+    if (!productId || !Number.isFinite(qtyDelta) || qtyDelta === 0) {
+      return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
     }
 
     await adjustStock({
-      ...parsed.data,
+      productId,
+      qtyDelta,
       userId: session.user.id,
+      note,
     });
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    const { message, status } = publicErrorMessage(e);
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Error" },
+      { status: 400 }
+    );
   }
 }
