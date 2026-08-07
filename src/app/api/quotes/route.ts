@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isOpsManager } from "@/lib/roles";
 import { createReservedQuote } from "@/lib/inventory";
+import { notifyOpsNewQuote } from "@/lib/notifications";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -31,10 +32,11 @@ export async function POST(req: Request) {
       );
     }
 
+    const customerName = String(customer.name).trim();
     const quote = await createReservedQuote({
       sellerId: session.user.id,
       customer: {
-        name: String(customer.name).trim(),
+        name: customerName,
         rnc: customer.rnc ? String(customer.rnc) : undefined,
         phone: customer.phone ? String(customer.phone) : undefined,
         address: customer.address ? String(customer.address) : undefined,
@@ -53,6 +55,17 @@ export async function POST(req: Request) {
         })
       ),
     });
+
+    // Solo avisar a administración cuando un vendedor crea el pedido
+    if (!isOpsManager(session.user.role)) {
+      void notifyOpsNewQuote({
+        actorId: session.user.id,
+        actorName: session.user.name || "Vendedor",
+        quoteId: quote.id,
+        quoteNumber: quote.number,
+        customerName,
+      }).catch(() => {});
+    }
 
     return NextResponse.json({ ok: true, quote });
   } catch (e) {

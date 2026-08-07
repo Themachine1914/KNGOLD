@@ -107,7 +107,7 @@ export function DailyInventoryBoard({
                       {day.events > 0
                         ? ` · ${day.events} movimientos`
                         : " · sin movimientos"}
-                      {` · físico ${physNet >= 0 ? "+" : ""}${physNet} uds`}
+                      {` · físico ${physNet >= 0 ? "+" : ""}${physNet} UND`}
                       {clients.length > 0
                         ? ` · ${clients.length} ${
                             clients.length === 1 ? "cliente" : "clientes"
@@ -124,7 +124,7 @@ export function DailyInventoryBoard({
                   <MoneyStat
                     label="Pedido"
                     amount={day.reservedAmount || 0}
-                    hint={`${day.reserveIn} uds + · ${day.reserveOut} uds −`}
+                    hint={`${day.reserveIn} UND + · ${day.reserveOut} UND −`}
                   />
                   <MoneyStat
                     label="Facturado"
@@ -134,7 +134,7 @@ export function DailyInventoryBoard({
                   <MoneyStat
                     label="Reservado de tránsito"
                     amount={day.transitAmount || 0}
-                    hint={`${day.transitIn} uds + · ${day.transitOut} uds −`}
+                    hint={`${day.transitIn} UND + · ${day.transitOut} UND −`}
                   />
                 </div>
 
@@ -160,7 +160,7 @@ export function DailyInventoryBoard({
                                   {c.customerName}
                                 </p>
                                 <p className="text-xs text-muted">
-                                  Cot. #{c.number} · {timeDO(c.lastAt)} · {c.units} uds
+                                  Cot. #{c.number} · {timeDO(c.lastAt)} · {c.units} UND
                                   {c.transitUnits > 0
                                     ? ` · ${c.transitUnits} tránsito`
                                     : ""}

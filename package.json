@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:seed": "tsx scripts/seed-firestore.ts"
+    "db:seed": "tsx scripts/seed-firestore.ts",
+    "db:wipe-ops": "CONFIRM_WIPE=YES tsx scripts/wipe-ops-data.ts"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.5.1",

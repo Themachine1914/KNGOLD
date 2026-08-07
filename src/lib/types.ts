@@ -22,6 +22,21 @@ export type ImportStatus = "ORDERED" | "IN_TRANSIT" | "ARRIVED" | "CANCELLED";
 /** Condición de venta del pedido. */
 export type PaymentTerms = "CONTADO" | "CREDITO_30";
 
+export type NotificationType = "QUOTE_CREATED" | "QUOTE_CONFIRMED";
+
+/** Aviso interno en la app (no push del sistema). */
+export type AppNotification = {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  quoteId: string;
+  quoteNumber: number;
+  read: boolean;
+  createdAt: string;
+};
+
 export type User = {
   id: string;
   name: string;

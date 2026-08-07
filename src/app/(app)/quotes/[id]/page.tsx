@@ -5,7 +5,6 @@ import { isOpsManager } from "@/lib/roles";
 import { getProductsWithAvailability, getQuote } from "@/lib/inventory";
 import { formatRD } from "@/lib/pricing";
 import {
-  conduceLabel,
   paymentTermsLabel,
   quoteStatusLabel,
   quoteStatusTone,
@@ -92,19 +91,21 @@ export default async function QuoteDetailPage({
             {paymentTermsLabel(quote.paymentTerms)}
           </p>
           <p>
-            <span className="text-muted">Conduce:</span>{" "}
-            {conduceLabel(quote.includeItbis)}{" "}
-            <span className="text-muted">
-              ({quote.includeItbis ? "con conduce" : "sin conduce"})
-            </span>
+            <span className="text-muted">Cliente:</span>{" "}
+            {quote.customer?.name || "—"}
           </p>
+          {quote.notes ? (
+            <p>
+              <span className="text-muted">Observación:</span> {quote.notes}
+            </p>
+          ) : null}
         </Card>
 
         {(quote.lines || []).some((l) => (l.transitQty || 0) > 0) ? (
           <Card className="border-gold/40 bg-gold/5 text-sm">
             <p className="font-semibold text-gold-dark">Apartado en tránsito</p>
             <p className="mt-1 text-muted">
-              {(quote.lines || []).reduce((s, l) => s + (l.transitQty || 0), 0)} uds
+              {(quote.lines || []).reduce((s, l) => s + (l.transitQty || 0), 0)} UND
               esperan la importación. Al recibir el pedido, pasan a reserva de almacén.
               No se puede confirmar la venta hasta entonces.
             </p>

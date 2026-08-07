@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isOpsManager } from "@/lib/roles";
 import { confirmQuote, getQuote } from "@/lib/inventory";
+import { notifySellerQuoteConfirmed } from "@/lib/notifications";
 
 export async function POST(
   _req: Request,
@@ -23,6 +24,18 @@ export async function POST(
 
   try {
     await confirmQuote(id, session.user.id);
+
+    if (isOpsManager(session.user.role)) {
+      void notifySellerQuoteConfirmed({
+        actorId: session.user.id,
+        actorName: session.user.name || "Administración",
+        sellerId: existing.sellerId,
+        quoteId: existing.id,
+        quoteNumber: existing.number,
+        customerName: existing.customer?.name || "Cliente",
+      }).catch(() => {});
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json(

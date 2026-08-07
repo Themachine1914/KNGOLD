@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
+import { NotificationsBell } from "@/components/notifications-bell";
 import { isOpsManager, isOwner, roleLabel } from "@/lib/roles";
 import type { Role } from "@/lib/types";
 
@@ -124,6 +125,7 @@ export function TopBar({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <NotificationsBell />
           {isOwner(role) ? (
             <Link
               href="/settings"

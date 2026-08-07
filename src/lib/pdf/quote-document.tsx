@@ -1,6 +1,6 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { COMPANY } from "@/lib/constants";
-import { conduceLabel, paymentTermsLabel } from "@/lib/labels";
+import { paymentTermsLabel } from "@/lib/labels";
 import { formatRD } from "@/lib/pricing";
 import type { PaymentTerms } from "@/lib/types";
 
@@ -96,13 +96,12 @@ export function QuoteDocument({ quote }: { quote: QuotePdfData }) {
             </Text>
           </View>
           <View>
-            <Text style={styles.title}>Cotización #{quote.number}</Text>
+            <Text style={styles.title}>Pedido #{quote.number}</Text>
             <Text style={styles.muted}>
               Fecha: {new Date(quote.createdAt).toLocaleString("es-DO")}
             </Text>
             <Text style={styles.muted}>
-              {paymentTermsLabel(quote.paymentTerms)} ·{" "}
-              {conduceLabel(quote.includeItbis)}
+              {paymentTermsLabel(quote.paymentTerms)}
             </Text>
             <Text style={styles.muted}>Vendedor: {quote.seller.name}</Text>
           </View>
@@ -162,7 +161,7 @@ export function QuoteDocument({ quote }: { quote: QuotePdfData }) {
         </View>
 
         <Text style={styles.footer}>
-          Documento interno de cotización KN GOLD. No constituye e-NCF ni comprobante fiscal
+          Documento interno de pedido KN GOLD. No constituye e-NCF ni comprobante fiscal
           DGII. Validez de reserva sujeta a confirmación
           {quote.reservedUntil
             ? ` (hasta ${new Date(quote.reservedUntil).toLocaleString("es-DO")})`

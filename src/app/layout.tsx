@@ -17,7 +17,7 @@ const instrument = Instrument_Serif({
 export const metadata: Metadata = {
   title: "KN GOLD — Control",
   description:
-    "Inventario, cotizaciones y movimientos en tiempo real para KN GOLD",
+    "Inventario, pedidos y movimientos en tiempo real para KN GOLD",
   applicationName: "KN GOLD",
   manifest: "/manifest.webmanifest",
   metadataBase: new URL(
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "KN GOLD — Control",
-    description: "Inventario, cotizaciones y movimientos para KN GOLD",
+    description: "Inventario, pedidos y movimientos para KN GOLD",
     siteName: "KN GOLD",
     images: [{ url: "/brand/og.png", width: 1200, height: 630, alt: "KN GOLD" }],
     type: "website",
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "KN GOLD — Control",
-    description: "Inventario, cotizaciones y movimientos para KN GOLD",
+    description: "Inventario, pedidos y movimientos para KN GOLD",
     images: ["/brand/og.png"],
   },
 };

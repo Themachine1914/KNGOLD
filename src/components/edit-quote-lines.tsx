@@ -69,7 +69,7 @@ export function EditQuoteLines({
     [lines]
   );
 
-  /** Máx. que esta cotización/factura puede tomar de un producto. */
+  /** Máx. que este pedido/factura puede tomar de un producto. */
   function maxFor(productId: string) {
     const p = productById.get(productId);
     const current = lineByProduct.get(productId)?.qty || 0;
@@ -176,7 +176,7 @@ export function EditQuoteLines({
       setOkMsg(
         mode === "CONFIRMED"
           ? "Factura actualizada. El stock físico ya refleja el cambio."
-          : "Cotización actualizada. El stock ya refleja el cambio."
+          : "Pedido actualizado. El stock ya refleja el cambio."
       );
       setShowAdd(false);
       router.refresh();
@@ -195,7 +195,7 @@ export function EditQuoteLines({
     <Card className="space-y-3">
       <div>
         <p className="font-semibold">
-          {mode === "CONFIRMED" ? "Editar factura" : "Editar cotización"}
+          {mode === "CONFIRMED" ? "Editar factura" : "Editar pedido"}
         </p>
         <p className="text-xs text-muted">
           {mode === "CONFIRMED"

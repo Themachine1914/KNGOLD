@@ -46,6 +46,7 @@ export function NewQuoteForm({
   /** C/C (con conduce) = true · S/C (sin conduce) = false */
   const [includeItbis, setIncludeItbis] = useState<boolean | null>(null);
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerms | null>(null);
+  const [notes, setNotes] = useState("");
   const [filter, setFilter] = useState("");
 
   function unitFor(p: ProductOpt) {
@@ -108,6 +109,7 @@ export function NewQuoteForm({
           customer,
           includeItbis,
           paymentTerms,
+          notes: notes.trim() || undefined,
           lines: selectedLines.map((l) => ({
             productId: l.product.id,
             qty: l.qty,
@@ -117,7 +119,7 @@ export function NewQuoteForm({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "No se pudo crear la cotización");
+        setError(data.error || "No se pudo crear el pedido");
         return;
       }
       const quote = data.quote as {
@@ -323,7 +325,7 @@ export function NewQuoteForm({
                   </div>
                   {fromTransit > 0 ? (
                     <p className="mt-2 text-xs font-semibold text-gold-dark">
-                      {fromTransit} uds se apartarán del tránsito (llegan con la importación).
+                      {fromTransit} UND se apartarán del tránsito (llegan con la importación).
                     </p>
                   ) : null}
                   {atMax ? (
@@ -334,7 +336,7 @@ export function NewQuoteForm({
                   ) : null}
                   {max <= 0 ? (
                     <p className="mt-2 text-xs font-semibold text-danger">
-                      Sin disponible para cotizar
+                      Sin disponible para pedidos
                     </p>
                   ) : null}
                 </Card>
@@ -348,7 +350,7 @@ export function NewQuoteForm({
                 <p className="text-xs font-medium tracking-wide text-muted">
                   {selectedLines.length === 0
                     ? "Sin electrodomésticos"
-                    : `${totalUnits} uds · ${selectedLines.length} ${
+                    : `${totalUnits} UND · ${selectedLines.length} ${
                         selectedLines.length === 1
                           ? "electrodoméstico"
                           : "electrodomésticos"
@@ -481,6 +483,18 @@ export function NewQuoteForm({
                 Total
               </span>
               <Money amount={totals.total} size="hero" />
+            </div>
+            <div className="pt-1">
+              <Label htmlFor="observacion">Observación</Label>
+              <textarea
+                id="observacion"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                maxLength={500}
+                placeholder="Nota interna (no sale en el PDF)…"
+                className="min-h-20 w-full resize-y rounded-xl border border-border bg-white px-3 py-2.5 text-sm outline-none ring-gold/30 focus:ring-2"
+              />
             </div>
             <p className="text-xs text-muted">
               Al confirmar se reserva el inventario por 48 horas.

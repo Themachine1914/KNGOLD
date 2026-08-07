@@ -201,7 +201,7 @@ export async function cancelImportOrder(importId: string) {
       const remainingAfterCancel = incoming - line.qty;
       if (apartado > remainingAfterCancel) {
         throw new Error(
-          `No se puede cancelar: hay ${apartado} uds apartadas de este producto en cotizaciones. Anula o edita esas cotizaciones primero.`
+          `No se puede cancelar: hay ${apartado} UND apartadas de este producto en pedidos. Anula o edita esos pedidos primero.`
         );
       }
     }

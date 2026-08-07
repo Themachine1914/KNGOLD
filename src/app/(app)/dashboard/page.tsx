@@ -142,7 +142,7 @@ export default async function DashboardPage() {
                           {item.supplier ? ` · ${item.supplier}` : ""}
                         </p>
                         <p className="text-sm text-muted">
-                          {units} uds · ETA {format(eta, "dd MMM", { locale: es })}
+                          {units} UND · ETA {format(eta, "dd MMM", { locale: es })}
                           <span className={late ? " text-danger" : ""}>
                             {" "}
                             ·{" "}

@@ -42,7 +42,7 @@ export default async function InventoryPage({
         title="Inventario"
         subtitle={
           isManager
-            ? "Stock, precios de oferta y disponible para cotizar."
+            ? "Stock, precios de oferta y disponible para pedidos."
             : "Disponible en almacén y en tránsito para apartar."
         }
         action={isManager ? <NewProductForm typeSuggestions={allTypes} /> : undefined}
@@ -151,7 +151,7 @@ export default async function InventoryPage({
               </div>
               {(p.transitApartado ?? 0) > 0 ? (
                 <p className="mt-2 text-xs text-muted">
-                  {p.transitApartado} uds ya apartadas de lo que viene en camino.
+                  {p.transitApartado} UND ya apartadas de lo que viene en camino.
                 </p>
               ) : null}
 

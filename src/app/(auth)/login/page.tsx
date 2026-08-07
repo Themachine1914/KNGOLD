@@ -54,7 +54,7 @@ function LoginForm() {
           KN <span className="text-gold-dark">GOLD</span>
         </p>
         <p className="mt-2 text-sm text-muted">
-          Control de inventario y cotizaciones en tu celular.
+          Control de inventario y pedidos en tu celular.
         </p>
       </div>
 

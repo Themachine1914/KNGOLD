@@ -40,7 +40,7 @@ export function transitPortion(line: QuoteLine): number {
   return Math.min(Math.max(0, Number(line.transitQty || 0)), line.qty);
 }
 
-/** Precio de oferta en cotización; si no viene override, usa el anterior o el catálogo. */
+/** Precio de oferta en pedido; si no viene override, usa el anterior o el catálogo. */
 function resolveOfferUnitPrice(
   catalogNet: number,
   previous: number | undefined,
@@ -228,8 +228,8 @@ async function nextNumber(counter: "quotes" | "imports"): Promise<number> {
 }
 
 /**
- * Reclama una cotización: comprueba y cambia su estado en una sola operación
- * atómica. Devuelve la cotización si el reclamo fue nuestro, o `null` si otro
+ * Reclama un pedido: comprueba y cambia su estado en una sola operación
+ * atómica. Devuelve el pedido si el reclamo fue nuestro, o `null` si otro
  * proceso llegó primero.
  */
 async function claimQuote(
@@ -240,7 +240,7 @@ async function claimQuote(
   const ref = getDb().collection("quotes").doc(quoteId);
   return getDb().runTransaction(async (tx) => {
     const doc = await tx.get(ref);
-    if (!doc.exists) throw new Error("Cotización no encontrada");
+    if (!doc.exists) throw new Error("Pedido no encontrado");
     const quote = { id: doc.id, ...doc.data() } as Quote;
     if (!canClaim(quote)) return null;
     tx.update(ref, { ...changes, updatedAt: new Date().toISOString() });
@@ -289,7 +289,7 @@ export async function createReservedQuote(input: {
   notes?: string;
   lines: { productId: string; qty: number; unitPrice?: number }[];
 }): Promise<Quote> {
-  if (!input.lines.length) throw new Error("La cotización debe tener al menos un producto.");
+  if (!input.lines.length) throw new Error("El pedido debe tener al menos un producto.");
   if (input.paymentTerms !== "CONTADO" && input.paymentTerms !== "CREDITO_30") {
     throw new Error("Elige la condición de venta: al contado o crédito a 30 días.");
   }
@@ -390,8 +390,8 @@ export async function createReservedQuote(input: {
       transitQty: t,
       note:
         t > 0
-          ? `Reserva cotización #${number}: ${stockPortion(line)} en almacén + ${t} apartadas en tránsito`
-          : `Reserva cotización #${number}`,
+          ? `Reserva pedido #${number}: ${stockPortion(line)} en almacén + ${t} apartadas en tránsito`
+          : `Reserva pedido #${number}`,
     });
   }
 
@@ -427,7 +427,7 @@ export async function confirmQuote(quoteId: string, userId: string) {
 
   const reservedByProduct = new Map<string, number>();
   const preview = await qref.get();
-  if (!preview.exists) throw new Error("Cotización no encontrada");
+  if (!preview.exists) throw new Error("Pedido no encontrado");
   const previewQuote = { id: preview.id, ...preview.data() } as Quote;
   const pendingTransit = (previewQuote.lines || []).reduce(
     (s, l) => s + transitPortion(l),
@@ -435,7 +435,7 @@ export async function confirmQuote(quoteId: string, userId: string) {
   );
   if (pendingTransit > 0) {
     throw new Error(
-      `Hay ${pendingTransit} uds apartadas en tránsito. Recibe la importación antes de confirmar la venta.`
+      `Hay ${pendingTransit} UND apartadas en tránsito. Recibe la importación antes de confirmar la venta.`
     );
   }
   for (const line of (previewQuote.lines || [])) {
@@ -449,20 +449,20 @@ export async function confirmQuote(quoteId: string, userId: string) {
 
   await db.runTransaction(async (tx) => {
     const qdoc = await tx.get(qref);
-    if (!qdoc.exists) throw new Error("Cotización no encontrada");
+    if (!qdoc.exists) throw new Error("Pedido no encontrado");
     const quote = { id: qdoc.id, ...qdoc.data() } as Quote;
 
     if (quote.status !== "RESERVED") {
-      throw new Error("Solo se pueden confirmar cotizaciones reservadas.");
+      throw new Error("Solo se pueden confirmar pedidos reservados.");
     }
     if (quote.reservedUntil && new Date(quote.reservedUntil).getTime() <= Date.now()) {
       throw new Error(
-        "La reserva venció y el stock volvió a estar disponible. Crea una cotización nueva."
+        "La reserva venció y el stock volvió a estar disponible. Crea un pedido nuevo."
       );
     }
 
     const lines = quote.lines || [];
-    if (!lines.length) throw new Error("La cotización no tiene líneas.");
+    if (!lines.length) throw new Error("El pedido no tiene líneas.");
     if ((lines || []).reduce((s, l) => s + transitPortion(l), 0) > 0) {
       throw new Error(
         "Hay unidades apartadas en tránsito. Recibe la importación antes de confirmar la venta."
@@ -500,7 +500,7 @@ export async function confirmQuote(quoteId: string, userId: string) {
         availableAfter: next - (reservedByProduct.get(lines[i].productId) ?? 0),
         quoteId,
         userId,
-        note: `Confirmación cotización #${quote.number}`,
+        note: `Confirmación pedido #${quote.number}`,
         createdAt: now,
       });
     });
@@ -510,11 +510,11 @@ export async function confirmQuote(quoteId: string, userId: string) {
 export async function cancelQuote(quoteId: string, userId: string) {
   const ref = getDb().collection("quotes").doc(quoteId);
   const snap = await ref.get();
-  if (!snap.exists) throw new Error("Cotización no encontrada");
+  if (!snap.exists) throw new Error("Pedido no encontrado");
   const existing = { id: snap.id, ...snap.data() } as Quote;
 
   if (existing.status === "CANCELLED" || existing.status === "EXPIRED") {
-    throw new Error("Esta cotización ya está anulada o expirada.");
+    throw new Error("Este pedido ya está anulado o expirada.");
   }
 
   if (existing.status === "CONFIRMED") {
@@ -523,7 +523,7 @@ export async function cancelQuote(quoteId: string, userId: string) {
       (q) => q.status === "CONFIRMED",
       { status: "CANCELLED", reservedUntil: null }
     );
-    if (!quote) throw new Error("Esta cotización no se puede anular.");
+    if (!quote) throw new Error("Este pedido no se puede anular.");
 
     const db = getDb();
     for (const line of quote.lines || []) {
@@ -549,7 +549,7 @@ export async function cancelQuote(quoteId: string, userId: string) {
           availableAfter: next - reserved,
           quoteId,
           userId,
-          note: `Anulación venta cotización #${quote.number}`,
+          note: `Anulación venta pedido #${quote.number}`,
           createdAt: now,
         });
       });
@@ -563,7 +563,7 @@ export async function cancelQuote(quoteId: string, userId: string) {
     { status: "CANCELLED", reservedUntil: null }
   );
   if (!quote) {
-    throw new Error("Esta cotización no se puede anular.");
+    throw new Error("Este pedido no se puede anular.");
   }
 
   if (quote.status === "RESERVED") {
@@ -579,14 +579,14 @@ export async function cancelQuote(quoteId: string, userId: string) {
         availableAfter: product.stockOnHand - reservedOthers,
         quoteId,
         userId,
-        note: `Anulación cotización #${quote.number}`,
+        note: `Anulación pedido #${quote.number}`,
       });
     }
   }
 }
 
 /**
- * Edita una cotización reservada o facturada (confirmada).
+ * Edita un pedido reservado o facturada (confirmada).
  * - RESERVED: ajusta reservas / tránsito.
  * - CONFIRMED: ajusta stock físico (venta) a la par.
  */
@@ -597,13 +597,13 @@ export async function updateQuoteLines(
 ): Promise<Quote> {
   const ref = getDb().collection("quotes").doc(quoteId);
   const snap = await ref.get();
-  if (!snap.exists) throw new Error("Cotización no encontrada");
+  if (!snap.exists) throw new Error("Pedido no encontrado");
   const quote = { id: snap.id, ...snap.data() } as Quote;
   if (quote.status === "CONFIRMED") {
     return updateConfirmedQuoteLines(quote, userId, nextLinesInput);
   }
   if (quote.status !== "RESERVED") {
-    throw new Error("Solo se pueden editar cotizaciones reservadas o facturadas.");
+    throw new Error("Solo se pueden editar pedidos reservados o facturados.");
   }
 
   const currentLines = quote.lines || [];
@@ -645,7 +645,7 @@ export async function updateQuoteLines(
       continue;
     }
 
-    // Disponibilidad libre de otros + lo que esta cotización ya tiene
+    // Disponibilidad libre de otros + lo que este pedido ya tiene
     const availableStock =
       product.stockOnHand - (await getReservedQty(productId, quoteId));
     const availableTransit = Math.max(
@@ -727,7 +727,7 @@ export async function updateQuoteLines(
         availableAfter: product.stockOnHand - reserved,
         quoteId,
         userId,
-        note: `Ajuste cotización #${quote.number}: +${d.delta}`,
+        note: `Ajuste pedido #${quote.number}: +${d.delta}`,
       });
     } else {
       await writeMovement({
@@ -739,7 +739,7 @@ export async function updateQuoteLines(
         availableAfter: product.stockOnHand - reserved,
         quoteId,
         userId,
-        note: `Ajuste cotización #${quote.number}: ${d.delta}`,
+        note: `Ajuste pedido #${quote.number}: ${d.delta}`,
       });
     }
   }
@@ -945,7 +945,7 @@ export async function expireReservedQuotes(): Promise<number> {
         stockAfter: product.stockOnHand,
         availableAfter: product.stockOnHand - reservedOthers,
         quoteId: quote.id,
-        note: `Expiración automática cotización #${quote.number}`,
+        note: `Expiración automática pedido #${quote.number}`,
       });
     }
     count++;
@@ -1008,7 +1008,7 @@ export async function adjustStock(input: {
   });
 }
 
-/** Actualiza precios de catálogo (ofertas). Las cotizaciones nuevas usan netPrice. */
+/** Actualiza precios de catálogo (ofertas). Los pedidos nuevos usan netPrice. */
 export async function updateProductPrice(input: {
   productId: string;
   netPrice: number;

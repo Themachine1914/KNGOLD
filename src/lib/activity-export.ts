@@ -34,7 +34,7 @@ export function buildActivityCsv(rows: UserActivityRow[]): string {
       "SKU",
       "Producto",
       "Cantidad",
-      "Cotizacion",
+      "Pedido",
       "Nota",
     ],
     rows.map((r) => {

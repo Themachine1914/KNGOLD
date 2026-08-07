@@ -215,7 +215,7 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
                   }`}
             </p>
             <p className="text-2xl font-semibold tabular-nums text-ink">
-              {totalUnits} uds
+              {totalUnits} UND
             </p>
           </div>
         </div>

@@ -21,9 +21,9 @@ export async function shareQuotePdf(opts: {
   customerPhone?: string | null;
   totalText?: string;
 }): Promise<ShareQuotePdfResult> {
-  const filename = `cotizacion-KN-${opts.number}.pdf`;
+  const filename = `pedido-KN-${opts.number}.pdf`;
   const text = [
-    `Cotización KN GOLD #${opts.number}`,
+    `Pedido KN GOLD #${opts.number}`,
     opts.customerName ? `Cliente: ${opts.customerName}` : null,
     opts.totalText ? `Total: ${opts.totalText}` : null,
   ]
@@ -46,7 +46,7 @@ export async function shareQuotePdf(opts: {
       try {
         await navigator.share({
           files: [file],
-          title: `Cotización #${opts.number}`,
+          title: `Pedido #${opts.number}`,
           text,
         });
         return "shared";
@@ -60,7 +60,7 @@ export async function shareQuotePdf(opts: {
 
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       try {
-        await navigator.share({ title: `Cotización #${opts.number}`, text });
+        await navigator.share({ title: `Pedido #${opts.number}`, text });
       } catch {
         /* ignore and continue to WhatsApp / open */
       }

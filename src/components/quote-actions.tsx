@@ -101,13 +101,13 @@ export function QuoteActions({
   if (pending === "cancel") {
     return (
       <ConfirmPanel
-        title={status === "CONFIRMED" ? "¿Anular la venta?" : "¿Anular la cotización?"}
+        title={status === "CONFIRMED" ? "¿Anular la venta?" : "¿Anular el pedido?"}
         detail={
           status === "CONFIRMED" ? (
             <>
               Se devolverán{" "}
               <strong className="tabular-nums text-ink">{units}</strong> unidades
-              al stock físico y la cotización quedará anulada.
+              al stock físico y el pedido quedará anulado.
             </>
           ) : (
             <>
@@ -150,7 +150,7 @@ export function QuoteActions({
           className="w-full text-danger"
           onClick={() => setPending("cancel")}
         >
-          {status === "CONFIRMED" ? "Anular factura" : "Anular cotización"}
+          {status === "CONFIRMED" ? "Anular factura" : "Anular pedido"}
         </Button>
       ) : null}
       {shareHint ? (

@@ -100,7 +100,7 @@ export function EditProductPriceForm({
       </div>
 
       <p className="text-xs text-muted">
-        El vendedor cotizará con el precio de venta. Las cotizaciones ya hechas no
+        El vendedor usará el precio de venta. Los pedidos ya hechos no
         cambian.
       </p>
 
