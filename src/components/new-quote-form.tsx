@@ -6,6 +6,7 @@ import { Badge, Button, Card, Input, Label, Money, StickyBar } from "./ui";
 import { QtyStepper } from "./qty-stepper";
 import { ProductThumb } from "./product-thumb";
 import { calcQuoteTotals, formatRD } from "@/lib/pricing";
+import { comprobanteLabel } from "@/lib/labels";
 import { shareQuotePdf } from "@/lib/share-quote-pdf";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 
@@ -344,7 +345,7 @@ export function NewQuoteForm({
                 <Money amount={totals.total} size="strong" />
               </div>
               <p className="pb-1 text-xs text-muted">
-                {includeItbis ? "Con comprobante" : "Sin comprobante"}
+                {comprobanteLabel(includeItbis)}
               </p>
             </div>
             <div className="flex gap-2">
@@ -373,11 +374,12 @@ export function NewQuoteForm({
       {step === 3 ? (
         <div className="space-y-3">
           <Card>
-            <p className="mb-3 font-semibold">¿Con o sin comprobante?</p>
+            <p className="mb-3 font-semibold">¿c/c o s/c?</p>
             <div className="grid grid-cols-2 gap-2" role="group">
               <button
                 type="button"
                 aria-pressed={includeItbis}
+                aria-label="Con comprobante"
                 onClick={() => setIncludeItbis(true)}
                 className={`min-h-11 rounded-xl border px-3 py-3 text-sm font-semibold ${
                   includeItbis
@@ -385,11 +387,12 @@ export function NewQuoteForm({
                     : "border-border bg-white text-ink"
                 }`}
               >
-                Con comprobante
+                c/c
               </button>
               <button
                 type="button"
                 aria-pressed={!includeItbis}
+                aria-label="Sin comprobante"
                 onClick={() => setIncludeItbis(false)}
                 className={`min-h-11 rounded-xl border px-3 py-3 text-sm font-semibold ${
                   !includeItbis
@@ -397,11 +400,11 @@ export function NewQuoteForm({
                     : "border-border bg-white text-ink"
                 }`}
               >
-                Sin comprobante
+                s/c
               </button>
             </div>
             <p className="mt-2 text-xs text-muted">
-              El precio total es el mismo en ambos casos.
+              c/c = con comprobante · s/c = sin comprobante. El total es el mismo.
             </p>
           </Card>
 

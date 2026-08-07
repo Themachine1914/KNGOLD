@@ -1,5 +1,10 @@
 import type { ImportStatus, MovementType, QuoteStatus } from "./types";
 
+/** c/c = con comprobante · s/c = sin comprobante */
+export function comprobanteLabel(includeItbis: boolean): string {
+  return includeItbis ? "c/c" : "s/c";
+}
+
 export function quoteStatusLabel(status: QuoteStatus): string {
   const map: Record<QuoteStatus, string> = {
     DRAFT: "Borrador",

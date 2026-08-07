@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { isOpsManager } from "@/lib/roles";
 import { getProductsWithAvailability, getQuote } from "@/lib/inventory";
 import { formatRD } from "@/lib/pricing";
-import { quoteStatusLabel, quoteStatusTone } from "@/lib/labels";
+import { comprobanteLabel, quoteStatusLabel, quoteStatusTone } from "@/lib/labels";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { QuoteActions } from "@/components/quote-actions";
 import { EditQuoteLines } from "@/components/edit-quote-lines";
@@ -84,7 +84,7 @@ export default async function QuoteDetailPage({
           ) : null}
           <p>
             <span className="text-muted">Comprobante:</span>{" "}
-            {quote.includeItbis ? "Con comprobante" : "Sin comprobante"}
+            {comprobanteLabel(quote.includeItbis)}
           </p>
         </Card>
 

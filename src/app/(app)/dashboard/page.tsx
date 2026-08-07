@@ -14,6 +14,7 @@ import { listUpcomingImports } from "@/lib/imports";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 import { formatRD } from "@/lib/pricing";
 import {
+  comprobanteLabel,
   importStatusLabel,
   importStatusTone,
   movementLabel,
@@ -233,7 +234,7 @@ export default async function DashboardPage() {
                     </p>
                     <p className="text-sm text-muted">
                       {formatRD(q.total)} ·{" "}
-                      {q.includeItbis ? "Con comprobante" : "Sin comprobante"}
+                      {comprobanteLabel(q.includeItbis)}
                     </p>
                   </div>
                   <Badge tone={quoteStatusTone(q.status)}>

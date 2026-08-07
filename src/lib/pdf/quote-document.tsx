@@ -1,5 +1,6 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { COMPANY } from "@/lib/constants";
+import { comprobanteLabel } from "@/lib/labels";
 import { formatRD } from "@/lib/pricing";
 
 type QuotePdfData = {
@@ -98,7 +99,7 @@ export function QuoteDocument({ quote }: { quote: QuotePdfData }) {
               Fecha: {new Date(quote.createdAt).toLocaleString("es-DO")}
             </Text>
             <Text style={styles.muted}>
-              {quote.includeItbis ? "Con comprobante" : "Sin comprobante"}
+              {comprobanteLabel(quote.includeItbis)}
             </Text>
             <Text style={styles.muted}>Vendedor: {quote.seller.name}</Text>
           </View>
