@@ -42,6 +42,8 @@ export function ShareQuotePdfButton({
 
       if (result === "shared") {
         setHint("Listo. Elige WhatsApp o Imprimir.");
+      } else if (result === "retry") {
+        setHint("PDF listo. Toca otra vez el botón para abrir WhatsApp.");
       } else if (result === "whatsapp") {
         setHint("Se abrió WhatsApp. Si hace falta, adjunta el PDF desde el visor.");
       } else if (result === "opened") {
@@ -49,7 +51,7 @@ export function ShareQuotePdfButton({
       } else if (result === "cancelled") {
         setHint("");
       } else {
-        setHint("No se pudo abrir el PDF. Permite ventanas emergentes e intenta de nuevo.");
+        setHint("No se pudo compartir. Toca otra vez o abre el pedido en Safari/Chrome.");
       }
     } finally {
       setLoading(false);

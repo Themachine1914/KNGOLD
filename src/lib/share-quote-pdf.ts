@@ -12,7 +12,32 @@ export type ShareQuotePdfResult =
   | "whatsapp"
   | "opened"
   | "cancelled"
+  | "retry"
   | "error";
+
+type PreparedPdf = {
+  blob: Blob;
+  filename: string;
+  expiresAt: number;
+};
+
+const preparedPdfs = new Map<string, PreparedPdf>();
+
+function prefersNativeShare(): boolean {
+  if (typeof navigator === "undefined" || typeof window === "undefined") {
+    return false;
+  }
+
+  const mobile = /Android|webOS|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  );
+  const standalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    ("standalone" in navigator &&
+      (navigator as Navigator & { standalone?: boolean }).standalone === true);
+
+  return mobile || standalone;
+}
 
 function openWindow(url: string): Window | null {
   try {
@@ -20,6 +45,71 @@ function openWindow(url: string): Window | null {
     return w && !w.closed ? w : null;
   } catch {
     return null;
+  }
+}
+
+function cachePdf(quoteId: string, blob: Blob, filename: string) {
+  preparedPdfs.set(quoteId, {
+    blob,
+    filename,
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  });
+}
+
+function getCachedFile(quoteId: string): File | null {
+  const hit = preparedPdfs.get(quoteId);
+  if (!hit || hit.expiresAt < Date.now()) {
+    preparedPdfs.delete(quoteId);
+    return null;
+  }
+
+  return new File([hit.blob], hit.filename, {
+    type: "application/pdf",
+    lastModified: Date.now(),
+  });
+}
+
+async function sharePdfFile(file: File): Promise<boolean> {
+  if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
+    return false;
+  }
+
+  const canShareFiles =
+    typeof navigator.canShare === "function" &&
+    navigator.canShare({ files: [file] });
+
+  if (!canShareFiles && !prefersNativeShare()) {
+    return false;
+  }
+
+  try {
+    // iOS/PWA: mezclar text/title con files suele fallar o manda solo texto a WhatsApp.
+    await navigator.share({ files: [file] });
+    return true;
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw e;
+    }
+    return false;
+  }
+}
+
+async function sharePdfText(text: string, number: number): Promise<boolean> {
+  if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
+    return false;
+  }
+
+  try {
+    await navigator.share({
+      title: `Pedido #${number}`,
+      text,
+    });
+    return true;
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw e;
+    }
+    return false;
   }
 }
 
@@ -44,65 +134,80 @@ export async function shareQuotePdf(opts: {
   const waUrl = waPhone
     ? `https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`
     : null;
+  const nativeShare = prefersNativeShare();
 
-  const isMobile =
-    typeof navigator !== "undefined" &&
-    /Android|webOS|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(
-      navigator.userAgent
-    );
-
-  // Pre-open on user gesture before async work (popup blockers).
-  // On mobile with WhatsApp, prefer the native share sheet over extra tabs.
   let pdfWindow: Window | null = null;
   let waWindow: Window | null = null;
 
-  if (!isMobile || !waUrl) {
+  if (!nativeShare) {
     pdfWindow = openWindow(pdfPath);
+    if (waUrl) {
+      waWindow = openWindow(waUrl);
+    }
   }
 
-  if (waUrl && !isMobile) {
-    waWindow = openWindow(waUrl);
+  const cachedFile = nativeShare ? getCachedFile(opts.quoteId) : null;
+  if (cachedFile) {
+    try {
+      if (await sharePdfFile(cachedFile)) {
+        return "shared";
+      }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        return "cancelled";
+      }
+    }
   }
 
   try {
-    const res = await fetch(pdfPath, { cache: "no-store" });
+    const res = await fetch(pdfPath, { cache: "no-store", credentials: "same-origin" });
     if (!res.ok) throw new Error("No se pudo generar el PDF");
     const blob = await res.blob();
-    const file = new File([blob], filename, { type: "application/pdf" });
+    const file = new File([blob], filename, {
+      type: "application/pdf",
+      lastModified: Date.now(),
+    });
 
-    const canShareFiles =
-      typeof navigator !== "undefined" &&
-      typeof navigator.share === "function" &&
-      typeof navigator.canShare === "function" &&
-      navigator.canShare({ files: [file] });
+    if (nativeShare) {
+      cachePdf(opts.quoteId, blob, filename);
+    }
 
-    if (canShareFiles) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: `Pedido #${opts.number}`,
-          text,
-        });
-        waWindow?.close();
+    try {
+      if (await sharePdfFile(file)) {
+        preparedPdfs.delete(opts.quoteId);
         return "shared";
-      } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") {
-          if (waWindow) return "whatsapp";
-          if (pdfWindow) return "opened";
-          return "cancelled";
-        }
+      }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        return "cancelled";
       }
     }
 
-    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    if (nativeShare) {
       try {
-        await navigator.share({ title: `Pedido #${opts.number}`, text });
+        if (await sharePdfText(text, opts.number)) {
+          return "shared";
+        }
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          return "cancelled";
+        }
+      }
+
+      // PDF ya está listo; un segundo toque abre la hoja de compartir al instante.
+      return "retry";
+    }
+
+    try {
+      if (await sharePdfText(text, opts.number)) {
         if (!pdfWindow) {
           pdfWindow = openWindow(pdfPath);
         }
         return "shared";
-      } catch {
-        /* continue to WhatsApp / open */
+      }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        return "cancelled";
       }
     }
 
@@ -113,7 +218,7 @@ export async function shareQuotePdf(opts: {
       if (!pdfWindow) {
         pdfWindow = openWindow(pdfPath);
       }
-      return "whatsapp";
+      return waWindow || pdfWindow ? "whatsapp" : "error";
     }
 
     if (pdfWindow) return "opened";
@@ -132,6 +237,7 @@ export async function shareQuotePdf(opts: {
   } catch {
     if (waWindow) return "whatsapp";
     if (pdfWindow) return "opened";
+    if (nativeShare && preparedPdfs.has(opts.quoteId)) return "retry";
     return "error";
   }
 }
