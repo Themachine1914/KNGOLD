@@ -7,12 +7,15 @@ import {
   unlockNotificationSound,
 } from "@/lib/notification-sound";
 
+const POLL_MS = 120_000; // 2 min — no quemar cuota de Firestore
+
 export function NotificationsBell() {
   const [unread, setUnread] = useState(0);
   const prevUnread = useRef<number | null>(null);
   const primed = useRef(false);
 
   const refresh = useCallback(async () => {
+    if (typeof document !== "undefined" && document.hidden) return;
     try {
       const res = await fetch("/api/notifications", { cache: "no-store" });
       if (!res.ok) return;
@@ -39,13 +42,18 @@ export function NotificationsBell() {
     window.addEventListener("keydown", prime, { once: true });
 
     void refresh();
-    const id = window.setInterval(() => void refresh(), 12_000);
+    const id = window.setInterval(() => void refresh(), POLL_MS);
     const onFocus = () => void refresh();
+    const onVis = () => {
+      if (!document.hidden) void refresh();
+    };
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
 
     return () => {
       window.clearInterval(id);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("pointerdown", prime);
       window.removeEventListener("keydown", prime);
     };

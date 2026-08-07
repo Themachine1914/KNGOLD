@@ -105,12 +105,12 @@ export async function notifySellerQuoteConfirmed(input: {
 
 export async function listNotificationsForUser(
   userId: string,
-  limit = 40
+  limit = 30
 ): Promise<AppNotification[]> {
   const snap = await getDb()
     .collection("notifications")
     .where("userId", "==", userId)
-    .limit(80)
+    .limit(Math.min(60, Math.max(limit * 2, limit)))
     .get();
 
   const items = snap.docs.map(
@@ -120,14 +120,19 @@ export async function listNotificationsForUser(
   return items.slice(0, limit);
 }
 
+/** Una sola lectura: lista reciente + unread derivado (evita 2 queries). */
+export async function listNotificationsBundle(userId: string): Promise<{
+  items: AppNotification[];
+  unread: number;
+}> {
+  const items = await listNotificationsForUser(userId, 30);
+  const unread = items.filter((n) => !n.read).length;
+  return { items, unread };
+}
+
 export async function countUnreadNotifications(userId: string): Promise<number> {
-  const snap = await getDb()
-    .collection("notifications")
-    .where("userId", "==", userId)
-    .where("read", "==", false)
-    .limit(50)
-    .get();
-  return snap.size;
+  const { unread } = await listNotificationsBundle(userId);
+  return unread;
 }
 
 export async function markNotificationRead(
