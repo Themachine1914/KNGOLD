@@ -16,6 +16,7 @@ import type {
   QuoteLine,
   User,
 } from "./types";
+import { productDisplayName } from "./product-label";
 import { zipStore } from "./zip-store";
 
 function ymdStamp(d = new Date()): string {
@@ -95,7 +96,7 @@ export async function buildFullBackupZip(): Promise<{
       content: buildCsv(
         [
           "id",
-          "sku",
+          "codigo",
           "nombre",
           "tipo",
           "descripcion",
@@ -110,7 +111,7 @@ export async function buildFullBackupZip(): Promise<{
         products.map((p) => [
           p.id,
           p.sku,
-          p.name,
+          productDisplayName(p.name),
           p.type,
           p.description,
           p.color,

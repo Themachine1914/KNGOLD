@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Card, Input, Label, StickyBar } from "./ui";
 import { QtyStepper } from "./qty-stepper";
 import { ProductThumb } from "./product-thumb";
+import { productDisplayName } from "@/lib/product-label";
 
 type ProductOpt = {
   id: string;
@@ -168,10 +169,17 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
                 className="flex items-center justify-between gap-2 rounded-xl border border-border px-2 py-2"
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <ProductThumb sku={p.sku} alt={p.name} imageUrl={p.imageUrl} size="sm" />
+                  <ProductThumb
+                    sku={p.sku}
+                    alt={productDisplayName(p.name)}
+                    imageUrl={p.imageUrl}
+                    size="sm"
+                  />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-ink">{p.sku}</p>
-                    <p className="truncate text-sm text-muted">{p.name}</p>
+                    <p className="truncate text-sm text-muted">
+                      {productDisplayName(p.name)}
+                    </p>
                     <p className="text-xs text-muted">
                       Físico <span className="tabular-nums">{p.stockOnHand}</span>
                     </p>
@@ -179,7 +187,7 @@ export function NewImportForm({ products }: { products: ProductOpt[] }) {
                 </div>
                 <QtyStepper
                   value={qty}
-                  label={`${p.sku} ${p.name}`}
+                  label={`${p.sku} ${productDisplayName(p.name)}`}
                   onChange={(next) =>
                     setQtyByProduct({ ...qtyByProduct, [p.id]: next })
                   }

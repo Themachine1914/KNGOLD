@@ -9,6 +9,7 @@ import {
   quoteStatusLabel,
   quoteStatusTone,
 } from "@/lib/labels";
+import { productDisplayName } from "@/lib/product-label";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { QuoteActions } from "@/components/quote-actions";
 import { EditQuoteLines } from "@/components/edit-quote-lines";
@@ -128,13 +129,14 @@ export default async function QuoteDetailPage({
                 <div className="flex items-start gap-3 min-w-0">
                   <ProductThumb
                     sku={line.product?.sku || "?"}
-                    alt={line.product?.name || ""}
+                    alt={productDisplayName(line.product?.name)}
                     imageUrl={line.product?.imageUrl}
                     size="sm"
                   />
                   <div className="min-w-0">
                     <p className="font-semibold">
-                      {line.product?.sku} · {line.product?.name}
+                      {line.product?.sku} ·{" "}
+                      {productDisplayName(line.product?.name)}
                     </p>
                     <p className="text-sm text-muted">
                       {line.qty} × {formatRD(line.unitPrice)}

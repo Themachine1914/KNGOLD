@@ -7,6 +7,7 @@ import { QtyStepper } from "./qty-stepper";
 import { ProductThumb } from "./product-thumb";
 import { calcQuoteTotals, formatRD } from "@/lib/pricing";
 import { paymentTermsLabel } from "@/lib/labels";
+import { productDisplayName } from "@/lib/product-label";
 import { shareQuotePdf } from "@/lib/share-quote-pdf";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 import type { PaymentTerms } from "@/lib/types";
@@ -241,12 +242,19 @@ export function NewQuoteForm({
               return (
                 <Card key={p.id} className="py-3">
                   <div className="flex items-start gap-3">
-                    <ProductThumb sku={p.sku} alt={p.name} imageUrl={p.imageUrl} size="sm" />
+                    <ProductThumb
+                      sku={p.sku}
+                      alt={productDisplayName(p.name)}
+                      imageUrl={p.imageUrl}
+                      size="sm"
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold tracking-wide text-muted">
                         {p.type} · {p.sku}
                       </p>
-                      <p className="font-semibold text-ink">{p.name}</p>
+                      <p className="font-semibold text-ink">
+                        {productDisplayName(p.name)}
+                      </p>
                     </div>
                   </div>
                   <div className="mt-2 flex items-center justify-between gap-2">
@@ -314,7 +322,7 @@ export function NewQuoteForm({
                     <QtyStepper
                       value={qty}
                       max={max}
-                      label={`${p.sku} ${p.name}`}
+                      label={`${p.sku} ${productDisplayName(p.name)}`}
                       onChange={(next) => {
                         setQtyByProduct({ ...qtyByProduct, [p.id]: next });
                         if (next > 0 && priceByProduct[p.id] == null) {

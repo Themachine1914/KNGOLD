@@ -2,6 +2,7 @@ import type { Query } from "firebase-admin/firestore";
 import type { AppUserSummary, UserActivityRow } from "./activity-export";
 import { getDb } from "./firebase";
 import { movementLabel } from "./labels";
+import { productDisplayName } from "./product-label";
 import type { InventoryMovement, User } from "./types";
 
 export type { AppUserSummary, UserActivityRow } from "./activity-export";
@@ -101,7 +102,7 @@ export async function listUserActivity(opts: {
       type: m.type,
       actionLabel: movementLabel(m.type),
       productSku: product.sku,
-      productName: product.name,
+      productName: productDisplayName(product.name),
       qty: m.qty,
       quoteId: m.quoteId ?? null,
       quoteNumber,

@@ -1,6 +1,7 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { COMPANY } from "@/lib/constants";
 import { paymentTermsLabel } from "@/lib/labels";
+import { productDisplayName } from "@/lib/product-label";
 import { formatRD } from "@/lib/pricing";
 import type { PaymentTerms } from "@/lib/types";
 
@@ -121,7 +122,7 @@ export function QuoteDocument({ quote }: { quote: QuotePdfData }) {
 
         <View style={styles.section}>
           <View style={styles.tableHeader}>
-            <Text style={styles.colSku}>SKU</Text>
+            <Text style={styles.colSku}>Código</Text>
             <Text style={styles.colName}>Producto</Text>
             <Text style={styles.colQty}>Cant.</Text>
             <Text style={styles.colPrice}>Precio</Text>
@@ -131,7 +132,7 @@ export function QuoteDocument({ quote }: { quote: QuotePdfData }) {
             <View key={idx} style={styles.tableRow}>
               <Text style={styles.colSku}>{line.product.sku}</Text>
               <Text style={styles.colName}>
-                {line.product.name}
+                {productDisplayName(line.product.name)}
                 {(line.transitQty || 0) > 0
                   ? ` (${line.transitQty} en tránsito)`
                   : ""}

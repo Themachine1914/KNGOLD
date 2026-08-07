@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Input } from "./ui";
 import { QtyStepper } from "./qty-stepper";
 import { ProductThumb } from "./product-thumb";
+import { productDisplayName } from "@/lib/product-label";
 import { formatRD } from "@/lib/pricing";
 
 type Line = {
@@ -214,7 +215,9 @@ export function EditQuoteLines({
           const qty = qtyByProduct[productId] ?? line?.qty ?? 0;
           const max = maxFor(productId);
           const sku = line?.product?.sku || product?.sku || "?";
-          const name = line?.product?.name || product?.name || "";
+          const name = productDisplayName(
+            line?.product?.name || product?.name || ""
+          );
           const unit = unitFor(productId);
           const catalog = product?.netPrice ?? 0;
           const isOffer =
@@ -346,7 +349,7 @@ export function EditQuoteLines({
           <Input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Buscar SKU o nombre..."
+            placeholder="Buscar código o nombre..."
             aria-label="Buscar electrodoméstico para agregar"
           />
           <div className="max-h-56 space-y-2 overflow-y-auto">
@@ -369,7 +372,9 @@ export function EditQuoteLines({
                     <span className="block text-xs font-medium text-muted">
                       {p.type} · {p.sku}
                     </span>
-                    <span className="block truncate text-sm font-semibold">{p.name}</span>
+                    <span className="block truncate text-sm font-semibold">
+                      {productDisplayName(p.name)}
+                    </span>
                   </span>
                   <span className="shrink-0 text-xs font-semibold text-gold-dark">
                     + · {p.availableTotal}

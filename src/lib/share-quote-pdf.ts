@@ -22,6 +22,7 @@ export async function shareQuotePdf(opts: {
   totalText?: string;
 }): Promise<ShareQuotePdfResult> {
   const filename = `pedido-KN-${opts.number}.pdf`;
+  const pdfPath = `/api/quotes/${opts.quoteId}/pdf`;
   const text = [
     `Pedido KN GOLD #${opts.number}`,
     opts.customerName ? `Cliente: ${opts.customerName}` : null,
@@ -30,8 +31,17 @@ export async function shareQuotePdf(opts: {
     .filter(Boolean)
     .join("\n");
 
+  // Abrir en el mismo gesto del usuario (si se espera al fetch, el popup se bloquea).
+  let opened = false;
   try {
-    const res = await fetch(`/api/quotes/${opts.quoteId}/pdf`);
+    const w = window.open(pdfPath, "_blank", "noopener,noreferrer");
+    opened = Boolean(w && !w.closed);
+  } catch {
+    opened = false;
+  }
+
+  try {
+    const res = await fetch(pdfPath, { cache: "no-store" });
     if (!res.ok) throw new Error("No se pudo generar el PDF");
     const blob = await res.blob();
     const file = new File([blob], filename, { type: "application/pdf" });
@@ -52,17 +62,8 @@ export async function shareQuotePdf(opts: {
         return "shared";
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
-          return "cancelled";
+          return opened ? "opened" : "cancelled";
         }
-        throw e;
-      }
-    }
-
-    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-      try {
-        await navigator.share({ title: `Pedido #${opts.number}`, text });
-      } catch {
-        /* ignore and continue to WhatsApp / open */
       }
     }
 
@@ -70,14 +71,27 @@ export async function shareQuotePdf(opts: {
     if (waPhone) {
       const url = `https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`;
       window.open(url, "_blank", "noopener,noreferrer");
-      // Also open PDF so they can attach/share from the viewer if needed
-      window.open(`/api/quotes/${opts.quoteId}/pdf`, "_blank", "noopener,noreferrer");
+      if (!opened) {
+        window.open(pdfPath, "_blank", "noopener,noreferrer");
+      }
       return "whatsapp";
     }
 
-    window.open(`/api/quotes/${opts.quoteId}/pdf`, "_blank", "noopener,noreferrer");
+    if (opened) return "opened";
+
+    // Último recurso: forzar descarga / apertura por enlace
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     return "opened";
   } catch {
-    return "error";
+    return opened ? "opened" : "error";
   }
 }

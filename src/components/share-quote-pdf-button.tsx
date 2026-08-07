@@ -31,25 +31,28 @@ export function ShareQuotePdfButton({
   async function onShare() {
     setLoading(true);
     setHint("");
-    const result = await shareQuotePdf({
-      quoteId,
-      number,
-      customerName,
-      customerPhone,
-      totalText: formatRD(total),
-    });
-    setLoading(false);
+    try {
+      const result = await shareQuotePdf({
+        quoteId,
+        number,
+        customerName,
+        customerPhone,
+        totalText: formatRD(total),
+      });
 
-    if (result === "shared") {
-      setHint("Listo. Elige WhatsApp o Imprimir.");
-    } else if (result === "whatsapp") {
-      setHint("Se abrió WhatsApp. Si hace falta, adjunta el PDF desde el visor.");
-    } else if (result === "opened") {
-      setHint("PDF abierto. Usa imprimir o compartir desde el visor.");
-    } else if (result === "cancelled") {
-      setHint("");
-    } else {
-      setHint("No se pudo abrir el PDF. Intenta de nuevo.");
+      if (result === "shared") {
+        setHint("Listo. Elige WhatsApp o Imprimir.");
+      } else if (result === "whatsapp") {
+        setHint("Se abrió WhatsApp. Si hace falta, adjunta el PDF desde el visor.");
+      } else if (result === "opened") {
+        setHint("PDF abierto. Usa imprimir o compartir desde el visor.");
+      } else if (result === "cancelled") {
+        setHint("");
+      } else {
+        setHint("No se pudo abrir el PDF. Permite ventanas emergentes e intenta de nuevo.");
+      }
+    } finally {
+      setLoading(false);
     }
   }
 

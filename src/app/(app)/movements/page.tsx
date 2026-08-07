@@ -11,6 +11,7 @@ import {
   parseListFilters,
 } from "@/lib/list-filters";
 import { movementLabel, movementTone } from "@/lib/labels";
+import { productDisplayName } from "@/lib/product-label";
 import { ListFiltersBar } from "@/components/list-filters-bar";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { ProductThumb } from "@/components/product-thumb";
@@ -71,7 +72,7 @@ export default async function MovementsPage({
         filters={filters}
         users={userOptions}
         userLabel="Usuario"
-        searchPlaceholder="SKU, producto, nota, usuario…"
+        searchPlaceholder="Código, producto, nota, usuario…"
       />
 
       {movements.length === 0 ? (
@@ -96,7 +97,7 @@ export default async function MovementsPage({
                 <div className="flex items-start gap-3">
                   <ProductThumb
                     sku={m.product?.sku || "?"}
-                    alt={m.product?.name || ""}
+                    alt={productDisplayName(m.product?.name)}
                     imageUrl={m.product?.imageUrl}
                     size="sm"
                   />
@@ -104,11 +105,13 @@ export default async function MovementsPage({
                     <div className="mb-1 flex flex-wrap items-center gap-2">
                       <Badge tone={movementTone(m.type)}>{movementLabel(m.type)}</Badge>
                       {m.quote ? (
-                        <span className="text-xs text-muted">Cot. #{m.quote.number}</span>
+                        <span className="text-xs text-muted">
+                          Pedido #{m.quote.number}
+                        </span>
                       ) : null}
                     </div>
                     <p className="font-semibold">
-                      {m.product?.sku} — {m.product?.name}
+                      {m.product?.sku} — {productDisplayName(m.product?.name)}
                     </p>
                     <p className="text-sm text-muted">
                       {m.user?.name || "Sistema"} ·{" "}

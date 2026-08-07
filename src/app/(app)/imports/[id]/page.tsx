@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { isOpsManager } from "@/lib/roles";
 import { getImport } from "@/lib/imports";
 import { importStatusLabel, importStatusTone } from "@/lib/labels";
+import { productDisplayName } from "@/lib/product-label";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { ProductThumb } from "@/components/product-thumb";
 import { ImportActions } from "@/components/import-actions";
@@ -74,13 +75,14 @@ export default async function ImportDetailPage({
               <div className="flex items-center gap-3 min-w-0">
                 <ProductThumb
                   sku={line.product?.sku || "?"}
-                  alt={line.product?.name || ""}
+                  alt={productDisplayName(line.product?.name)}
                   imageUrl={line.product?.imageUrl}
                   size="sm"
                 />
                 <div className="min-w-0">
                   <p className="font-semibold">
-                    {line.product?.sku} · {line.product?.name}
+                    {line.product?.sku} ·{" "}
+                    {productDisplayName(line.product?.name)}
                   </p>
                   <p className="text-sm text-muted">
                     Stock actual {line.product?.stockOnHand}

@@ -31,7 +31,7 @@ export function buildActivityCsv(rows: UserActivityRow[]): string {
       "Hora",
       "Usuario",
       "Accion",
-      "SKU",
+      "Código",
       "Producto",
       "Cantidad",
       "Pedido",

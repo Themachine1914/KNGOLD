@@ -76,7 +76,7 @@ export function NewProductForm({ typeSuggestions = [] }: { typeSuggestions?: str
     const stockNum = Math.floor(Number(stockOnHand || 0));
 
     if (!sku.trim() || !name.trim() || !type.trim()) {
-      setError("SKU, nombre y tipo son obligatorios.");
+      setError("Código, nombre y tipo son obligatorios.");
       return;
     }
     if (!Number.isFinite(netNum) || netNum < 0) {
@@ -197,7 +197,7 @@ export function NewProductForm({ typeSuggestions = [] }: { typeSuggestions?: str
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label htmlFor="np-sku">SKU</Label>
+                  <Label htmlFor="np-sku">Código</Label>
                   <Input
                     id="np-sku"
                     value={sku}

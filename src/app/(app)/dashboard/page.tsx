@@ -12,6 +12,7 @@ import {
 } from "@/lib/inventory";
 import { listUpcomingImports } from "@/lib/imports";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
+import { productDisplayName } from "@/lib/product-label";
 import { formatRD } from "@/lib/pricing";
 import {
   importStatusLabel,
@@ -208,7 +209,7 @@ export default async function DashboardPage() {
               <Card key={p.id} className="flex items-center justify-between py-3">
                 <div>
                   <p className="font-semibold">{p.sku}</p>
-                  <p className="text-sm text-muted">{p.name}</p>
+                  <p className="text-sm text-muted">{productDisplayName(p.name)}</p>
                 </div>
                 <Badge tone={(p.available ?? 0) <= 0 ? "danger" : "warn"}>
                   Disp. {p.availableTotal ?? p.available}

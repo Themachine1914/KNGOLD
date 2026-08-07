@@ -1045,7 +1045,7 @@ export async function createProduct(input: {
   const sku = input.sku.trim().toUpperCase();
   const name = input.name.trim();
   const type = input.type.trim().toUpperCase();
-  if (!sku) throw new Error("El SKU es obligatorio.");
+  if (!sku) throw new Error("El código es obligatorio.");
   if (!name) throw new Error("El nombre es obligatorio.");
   if (!type) throw new Error("El tipo es obligatorio.");
 
@@ -1070,7 +1070,7 @@ export async function createProduct(input: {
     .limit(1)
     .get();
   if (!existing.empty) {
-    throw new Error(`Ya existe un producto con el SKU ${sku}.`);
+    throw new Error(`Ya existe un producto con el código ${sku}.`);
   }
 
   const discountPct =

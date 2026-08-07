@@ -86,7 +86,7 @@ export async function POST(req: Request) {
         .get();
       if (!clash.empty) {
         return NextResponse.json(
-          { error: `Ya existe un producto con el SKU ${normalizedSku}.` },
+          { error: `Ya existe un producto con el código ${normalizedSku}.` },
           { status: 400 }
         );
       }

@@ -8,6 +8,7 @@ import { EditProductPriceForm } from "@/components/edit-product-price-form";
 import { NewProductForm } from "@/components/new-product-form";
 import { ProductThumb } from "@/components/product-thumb";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
+import { productDisplayName } from "@/lib/product-label";
 
 export default async function InventoryPage({
   searchParams,
@@ -52,7 +53,7 @@ export default async function InventoryPage({
         <input
           name="q"
           defaultValue={params.q}
-          placeholder="Buscar SKU o nombre..."
+          placeholder="Buscar código o nombre..."
           className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-sm outline-none ring-gold/30 focus:ring-2"
         />
         <button type="submit" className="rounded-xl bg-ink px-4 text-sm font-semibold text-white">
@@ -90,12 +91,18 @@ export default async function InventoryPage({
             <Card key={p.id}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3 min-w-0">
-                  <ProductThumb sku={p.sku} alt={p.name} imageUrl={p.imageUrl} />
+                  <ProductThumb
+                    sku={p.sku}
+                    alt={productDisplayName(p.name)}
+                    imageUrl={p.imageUrl}
+                  />
                   <div className="min-w-0">
                     <p className="text-xs font-medium tracking-wide text-gold-dark">
                       {p.type} · {p.sku}
                     </p>
-                    <p className="mt-0.5 font-semibold text-ink">{p.name}</p>
+                    <p className="mt-0.5 font-semibold text-ink">
+                      {productDisplayName(p.name)}
+                    </p>
                     <p className="text-sm text-muted">
                       {[p.description, p.color].filter(Boolean).join(" · ")}
                     </p>
