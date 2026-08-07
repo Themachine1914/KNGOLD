@@ -1,5 +1,6 @@
 import { BottomNav, TopBar } from "@/components/nav";
 import { Providers } from "@/components/providers";
+import { PushEnableBanner } from "@/components/push-enable-banner";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
@@ -15,7 +16,10 @@ export default async function AppLayout({
     <Providers>
       <div className="mx-auto min-h-dvh w-full max-w-lg">
         <TopBar name={session.user.name} role={session.user.role} />
-        <main className="px-4 pb-28 pt-5">{children}</main>
+        <main className="px-4 pb-28 pt-5">
+          <PushEnableBanner />
+          {children}
+        </main>
         <BottomNav role={session.user.role} />
       </div>
     </Providers>

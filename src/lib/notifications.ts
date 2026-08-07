@@ -1,4 +1,5 @@
 import { getDb, newId } from "./firebase";
+import { sendPushToUsers } from "./push";
 import { isOpsManager } from "./roles";
 import type { AppNotification, NotificationType, User } from "./types";
 
@@ -52,6 +53,15 @@ export async function createNotifications(input: {
   }
 
   await batch.commit();
+
+  // Aviso del sistema (suena con la app cerrada si el usuario activó push)
+  void sendPushToUsers({
+    userIds: ids,
+    title: input.title,
+    body: input.body,
+    url: `/quotes/${input.quoteId}`,
+    tag: `quote-${input.quoteId}-${input.type}`,
+  }).catch(() => {});
 }
 
 /** Pedido nuevo → avisar a Administración / Admin (no al autor). */

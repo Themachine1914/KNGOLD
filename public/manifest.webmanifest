@@ -1,9 +1,10 @@
 {
   "name": "KN GOLD Control",
   "short_name": "KN GOLD",
-  "description": "Inventario y cotizaciones KN GOLD",
+  "description": "Inventario y pedidos KN GOLD",
   "start_url": "/dashboard",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#f6f3ec",
   "theme_color": "#151311",
   "lang": "es-DO",
