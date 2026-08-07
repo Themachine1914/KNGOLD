@@ -27,28 +27,48 @@ import { DailyInventoryBoard } from "@/components/daily-inventory-board";
 import { differenceInCalendarDays, format, formatDistanceToNow, isPast, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
+async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch {
+    return fallback;
+  }
+}
+
 export default async function DashboardPage() {
   const session = await auth();
   const isManager = isOpsManager(session!.user.role);
   const sellerId = session!.user.id;
-  await expireReservedQuotes();
+  await safe(() => expireReservedQuotes(), 0);
 
-  const products = await getProductsWithAvailability();
+  // Cargas en serie y con fallback: evita tumbar toda la página si Firebase
+  // está al límite, y reduce picos de lecturas concurrentes.
+  const products = await safe(() => getProductsWithAvailability(), []);
   const lowStock = products.filter((p) => (p.available ?? 0) <= LOW_STOCK_THRESHOLD);
-  const reservedQuotes = await countReservedQuotes(
-    isManager ? undefined : sellerId
+  const reservedQuotes = await safe(
+    () => countReservedQuotes(isManager ? undefined : sellerId),
+    0
   );
-  const upcomingImports = isManager ? await listUpcomingImports(5) : [];
-  const recentMovements = isManager ? await listMovements(8) : [];
+  const upcomingImports = isManager
+    ? await safe(() => listUpcomingImports(5), [])
+    : [];
+  const recentMovements = isManager
+    ? await safe(() => listMovements(8), [])
+    : [];
   const myQuotes = isManager
     ? []
-    : await listQuotes(sellerId);
+    : await safe(() => listQuotes(sellerId), []);
   const recentQuotes = isManager
-    ? (await listQuotes()).slice(0, 5)
+    ? (await safe(() => listQuotes(), [])).slice(0, 5)
     : myQuotes.slice(0, 8);
+  // El tablero diario lee muchos movimientos; si falla, el resto del panel sigue.
   const dailyInventory = isManager
-    ? await getDailyInventorySummaries(14)
+    ? await safe(() => getDailyInventorySummaries(7), [])
     : [];
+  const partial =
+    products.length === 0 &&
+    recentQuotes.length === 0 &&
+    upcomingImports.length === 0;
 
   return (
     <div>
@@ -60,6 +80,13 @@ export default async function DashboardPage() {
             : "Inventario al día y solo tus pedidos."
         }
       />
+
+      {partial ? (
+        <Card className="mb-4 border-warn/40 bg-warn/5 py-3 text-sm text-muted">
+          Algunos datos no cargaron (límite de la base de datos). Entra a Pedidos o
+          Stock, o recarga en unos segundos.
+        </Card>
+      ) : null}
 
       <div className="mb-4 grid grid-cols-3 gap-2">
         <Card className="p-3">

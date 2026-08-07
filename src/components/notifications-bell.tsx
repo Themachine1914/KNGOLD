@@ -41,18 +41,17 @@ export function NotificationsBell() {
     window.addEventListener("pointerdown", prime, { once: true });
     window.addEventListener("keydown", prime, { once: true });
 
-    void refresh();
+    // Primera carga diferida para no competir con el dashboard
+    const boot = window.setTimeout(() => void refresh(), 2500);
     const id = window.setInterval(() => void refresh(), POLL_MS);
-    const onFocus = () => void refresh();
     const onVis = () => {
       if (!document.hidden) void refresh();
     };
-    window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVis);
 
     return () => {
+      window.clearTimeout(boot);
       window.clearInterval(id);
-      window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("pointerdown", prime);
       window.removeEventListener("keydown", prime);

@@ -87,6 +87,7 @@ export function BottomNav({ role }: { role: Role }) {
             <Link
               key={link.href}
               href={link.href}
+              prefetch={false}
               aria-current={active ? "page" : undefined}
               aria-label={"full" in link ? link.full : link.label}
               className={`flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 font-semibold leading-tight ${
@@ -129,6 +130,7 @@ export function TopBar({
           {isOwner(role) ? (
             <Link
               href="/settings"
+              prefetch={false}
               className="min-h-11 rounded-lg border border-white/25 px-3 py-1.5 text-xs font-semibold text-white"
             >
               Configuración
