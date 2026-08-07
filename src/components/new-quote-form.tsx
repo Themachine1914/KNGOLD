@@ -6,9 +6,10 @@ import { Badge, Button, Card, Input, Label, Money, StickyBar } from "./ui";
 import { QtyStepper } from "./qty-stepper";
 import { ProductThumb } from "./product-thumb";
 import { calcQuoteTotals, formatRD } from "@/lib/pricing";
-import { comprobanteLabel } from "@/lib/labels";
+import { paymentTermsLabel } from "@/lib/labels";
 import { shareQuotePdf } from "@/lib/share-quote-pdf";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
+import type { PaymentTerms } from "@/lib/types";
 
 type ProductOpt = {
   id: string;
@@ -42,7 +43,9 @@ export function NewQuoteForm({
   });
   const [qtyByProduct, setQtyByProduct] = useState<Record<string, number>>({});
   const [priceByProduct, setPriceByProduct] = useState<Record<string, number>>({});
-  const [includeItbis, setIncludeItbis] = useState(true);
+  /** ITBIS interno: se mantiene c/c por defecto; la UI pide condición de venta. */
+  const [includeItbis] = useState(true);
+  const [paymentTerms, setPaymentTerms] = useState<PaymentTerms | null>(null);
   const [filter, setFilter] = useState("");
 
   function unitFor(p: ProductOpt) {
@@ -87,6 +90,10 @@ export function NewQuoteForm({
   });
 
   async function submit() {
+    if (!paymentTerms) {
+      setError("Elige la condición de venta: al contado o crédito a 30 días.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -96,6 +103,7 @@ export function NewQuoteForm({
         body: JSON.stringify({
           customer,
           includeItbis,
+          paymentTerms,
           lines: selectedLines.map((l) => ({
             productId: l.product.id,
             qty: l.qty,
@@ -345,7 +353,7 @@ export function NewQuoteForm({
                 <Money amount={totals.total} size="strong" />
               </div>
               <p className="pb-1 text-xs text-muted">
-                {comprobanteLabel(includeItbis)}
+                {paymentTerms ? paymentTermsLabel(paymentTerms) : "Elige condición de venta"}
               </p>
             </div>
             <div className="flex gap-2">
@@ -374,37 +382,35 @@ export function NewQuoteForm({
       {step === 3 ? (
         <div className="space-y-3">
           <Card>
-            <p className="mb-3 font-semibold">¿c/c o s/c?</p>
+            <p className="mb-3 font-semibold">Condiciones de venta</p>
             <div className="grid grid-cols-2 gap-2" role="group">
               <button
                 type="button"
-                aria-pressed={includeItbis}
-                aria-label="Con comprobante"
-                onClick={() => setIncludeItbis(true)}
+                aria-pressed={paymentTerms === "CONTADO"}
+                onClick={() => setPaymentTerms("CONTADO")}
                 className={`min-h-11 rounded-xl border px-3 py-3 text-sm font-semibold ${
-                  includeItbis
+                  paymentTerms === "CONTADO"
                     ? "border-ink bg-ink text-white"
                     : "border-border bg-white text-ink"
                 }`}
               >
-                c/c
+                Al contado
               </button>
               <button
                 type="button"
-                aria-pressed={!includeItbis}
-                aria-label="Sin comprobante"
-                onClick={() => setIncludeItbis(false)}
+                aria-pressed={paymentTerms === "CREDITO_30"}
+                onClick={() => setPaymentTerms("CREDITO_30")}
                 className={`min-h-11 rounded-xl border px-3 py-3 text-sm font-semibold ${
-                  !includeItbis
+                  paymentTerms === "CREDITO_30"
                     ? "border-ink bg-ink text-white"
                     : "border-border bg-white text-ink"
                 }`}
               >
-                s/c
+                Crédito a 30 días
               </button>
             </div>
             <p className="mt-2 text-xs text-muted">
-              c/c = con comprobante · s/c = sin comprobante. El total es el mismo.
+              Elige una opción para continuar.
             </p>
           </Card>
 
@@ -462,6 +468,7 @@ export function NewQuoteForm({
               variant="gold"
               className="flex-1"
               loading={loading}
+              disabled={!paymentTerms}
               onClick={submit}
             >
               {loading ? "Reservando…" : "Reservar y enviar"}

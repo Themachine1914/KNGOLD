@@ -26,6 +26,7 @@ export async function GET(
   const pdfQuote = {
     number: quote.number,
     includeItbis: quote.includeItbis,
+    paymentTerms: quote.paymentTerms ?? null,
     subtotal: quote.subtotal,
     itbisAmount: quote.itbisAmount,
     total: quote.total,

@@ -1,8 +1,16 @@
-import type { ImportStatus, MovementType, QuoteStatus } from "./types";
+import type { ImportStatus, MovementType, PaymentTerms, QuoteStatus } from "./types";
 
 /** c/c = con comprobante · s/c = sin comprobante */
 export function comprobanteLabel(includeItbis: boolean): string {
   return includeItbis ? "c/c" : "s/c";
+}
+
+export function paymentTermsLabel(
+  terms: PaymentTerms | string | null | undefined
+): string {
+  if (terms === "CREDITO_30") return "Crédito a 30 días";
+  if (terms === "CONTADO") return "Al contado";
+  return "—";
 }
 
 export function quoteStatusLabel(status: QuoteStatus): string {

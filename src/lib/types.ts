@@ -19,6 +19,9 @@ export type MovementType =
 
 export type ImportStatus = "ORDERED" | "IN_TRANSIT" | "ARRIVED" | "CANCELLED";
 
+/** Condición de venta del pedido. */
+export type PaymentTerms = "CONTADO" | "CREDITO_30";
+
 export type User = {
   id: string;
   name: string;
@@ -93,6 +96,8 @@ export type Quote = {
   sellerId: string;
   customerId: string;
   includeItbis: boolean;
+  /** Al contado o crédito a 30 días. Pedidos viejos pueden no traerlo. */
+  paymentTerms?: PaymentTerms | null;
   status: QuoteStatus;
   subtotal: number;
   itbisAmount: number;

@@ -1,11 +1,13 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { COMPANY } from "@/lib/constants";
-import { comprobanteLabel } from "@/lib/labels";
+import { paymentTermsLabel } from "@/lib/labels";
 import { formatRD } from "@/lib/pricing";
+import type { PaymentTerms } from "@/lib/types";
 
 type QuotePdfData = {
   number: number;
   includeItbis: boolean;
+  paymentTerms?: PaymentTerms | null;
   subtotal: number;
   itbisAmount: number;
   total: number;
@@ -99,7 +101,7 @@ export function QuoteDocument({ quote }: { quote: QuotePdfData }) {
               Fecha: {new Date(quote.createdAt).toLocaleString("es-DO")}
             </Text>
             <Text style={styles.muted}>
-              {comprobanteLabel(quote.includeItbis)}
+              {paymentTermsLabel(quote.paymentTerms)}
             </Text>
             <Text style={styles.muted}>Vendedor: {quote.seller.name}</Text>
           </View>

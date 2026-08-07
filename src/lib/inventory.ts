@@ -8,6 +8,7 @@ import type {
   InventoryMovement,
   MovementType,
   Product,
+  PaymentTerms,
   Quote,
   QuoteLine,
   User,
@@ -284,10 +285,14 @@ export async function createReservedQuote(input: {
     email?: string;
   };
   includeItbis: boolean;
+  paymentTerms: PaymentTerms;
   notes?: string;
   lines: { productId: string; qty: number; unitPrice?: number }[];
 }): Promise<Quote> {
   if (!input.lines.length) throw new Error("La cotización debe tener al menos un producto.");
+  if (input.paymentTerms !== "CONTADO" && input.paymentTerms !== "CREDITO_30") {
+    throw new Error("Elige la condición de venta: al contado o crédito a 30 días.");
+  }
 
   type Planned = {
     productId: string;
@@ -362,6 +367,7 @@ export async function createReservedQuote(input: {
     sellerId: input.sellerId,
     customerId,
     includeItbis: input.includeItbis,
+    paymentTerms: input.paymentTerms,
     status: "RESERVED",
     subtotal: totals.subtotal,
     itbisAmount: totals.itbisAmount,

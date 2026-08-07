@@ -11,7 +11,11 @@ import {
   parseListFilters,
 } from "@/lib/list-filters";
 import { formatRD } from "@/lib/pricing";
-import { comprobanteLabel, quoteStatusLabel, quoteStatusTone } from "@/lib/labels";
+import {
+  paymentTermsLabel,
+  quoteStatusLabel,
+  quoteStatusTone,
+} from "@/lib/labels";
 import { ListFiltersBar } from "@/components/list-filters-bar";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui";
 import { format, parseISO } from "date-fns";
@@ -104,7 +108,7 @@ export default async function QuotesPage({
                     </p>
                     <p className="text-sm text-muted">
                       {(q.lines || []).length} ítems · {formatRD(q.total)} ·{" "}
-                      {comprobanteLabel(q.includeItbis)}
+                      {paymentTermsLabel(q.paymentTerms)}
                     </p>
                     {isOwner ? (
                       <p className="mt-1 text-xs text-muted">{q.seller?.name}</p>

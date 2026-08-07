@@ -14,10 +14,21 @@ export async function POST(req: Request) {
     const customer = body.customer || {};
     const lines = Array.isArray(body.lines) ? body.lines : [];
     const includeItbis = Boolean(body.includeItbis);
+    const paymentTermsRaw = String(body.paymentTerms || "");
+    const paymentTerms =
+      paymentTermsRaw === "CREDITO_30" || paymentTermsRaw === "CONTADO"
+        ? paymentTermsRaw
+        : null;
     const canOfferPrice = isOpsManager(session.user.role);
 
     if (!customer.name || !String(customer.name).trim()) {
       return NextResponse.json({ error: "El cliente es obligatorio" }, { status: 400 });
+    }
+    if (!paymentTerms) {
+      return NextResponse.json(
+        { error: "Elige la condición de venta: al contado o crédito a 30 días." },
+        { status: 400 }
+      );
     }
 
     const quote = await createReservedQuote({
@@ -30,6 +41,7 @@ export async function POST(req: Request) {
         email: customer.email ? String(customer.email) : undefined,
       },
       includeItbis,
+      paymentTerms,
       notes: body.notes ? String(body.notes) : undefined,
       lines: lines.map(
         (l: { productId: string; qty: number; unitPrice?: number }) => ({
