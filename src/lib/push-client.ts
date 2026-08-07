@@ -32,32 +32,45 @@ export async function enablePushNotifications(): Promise<
 > {
   if (!pushSupported()) return "unsupported";
 
-  const reg = await registerPushServiceWorker();
-  if (!reg) return "error";
+  try {
+    const reg = await registerPushServiceWorker();
+    if (!reg) return "error";
 
-  await navigator.serviceWorker.ready;
+    await navigator.serviceWorker.ready;
 
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") return permission === "denied" ? "denied" : "error";
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      return permission === "denied" ? "denied" : "error";
+    }
 
-  const vapidRes = await fetch("/api/push/vapid", { cache: "no-store" });
-  if (!vapidRes.ok) return "error";
-  const { publicKey } = (await vapidRes.json()) as { publicKey?: string };
-  if (!publicKey) return "error";
+    const vapidRes = await fetch("/api/push/vapid", { cache: "no-store" });
+    if (!vapidRes.ok) return "error";
+    const { publicKey } = (await vapidRes.json()) as { publicKey?: string };
+    if (!publicKey) return "error";
 
-  const existing = await reg.pushManager.getSubscription();
-  const subscription =
-    existing ||
-    (await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
-    }));
+    let subscription = await reg.pushManager.getSubscription();
+    if (!subscription) {
+      try {
+        subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(
+            publicKey
+          ) as BufferSource,
+        });
+      } catch {
+        // En localhost / algunos navegadores el push del sistema no está disponible
+        return "unsupported";
+      }
+    }
 
-  const res = await fetch("/api/push/subscribe", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ subscription: subscription.toJSON() }),
-  });
+    const res = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subscription: subscription.toJSON() }),
+    });
 
-  return res.ok ? "granted" : "error";
+    return res.ok ? "granted" : "error";
+  } catch {
+    return "error";
+  }
 }

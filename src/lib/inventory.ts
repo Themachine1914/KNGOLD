@@ -1258,6 +1258,7 @@ export async function getDailyInventorySummaries(
     number: number;
     customerName: string;
     total: number;
+    status: Quote["status"];
     unitByProduct: Map<string, number>;
   };
   const quoteMeta = new Map<string, QuoteMeta>();
@@ -1278,10 +1279,12 @@ export async function getDailyInventorySummaries(
       for (const line of (data.lines || []) as QuoteLine[]) {
         unitByProduct.set(line.productId, Number(line.unitPrice || 0));
       }
+      const status = String(data.status || "RESERVED") as Quote["status"];
       quoteMeta.set(id, {
         number: Number(data.number || 0),
         customerName,
         total: Number(data.total || 0),
+        status,
         unitByProduct,
       });
     })
@@ -1412,6 +1415,7 @@ export async function getDailyInventorySummaries(
         transitUnits: acc.transitUnits,
         amount: Math.round(acc.amount * 100) / 100,
         lastAt: acc.lastAt,
+        status: meta?.status || "RESERVED",
       });
     }
     list.sort((a, b) => b.lastAt.localeCompare(a.lastAt));

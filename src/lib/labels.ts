@@ -18,7 +18,9 @@ export function paymentTermsLabel(
   return "—";
 }
 
-export function quoteStatusLabel(status: QuoteStatus): string {
+export function quoteStatusLabel(
+  status: QuoteStatus | string | null | undefined
+): string {
   const map: Record<QuoteStatus, string> = {
     DRAFT: "Borrador",
     RESERVED: "Reservada",
@@ -26,11 +28,11 @@ export function quoteStatusLabel(status: QuoteStatus): string {
     CANCELLED: "Cancelada",
     EXPIRED: "Expirada",
   };
-  return map[status];
+  return (status && map[status as QuoteStatus]) || "—";
 }
 
 export function quoteStatusTone(
-  status: QuoteStatus
+  status: QuoteStatus | string | null | undefined
 ): "neutral" | "gold" | "success" | "danger" | "warn" {
   const map: Record<QuoteStatus, "neutral" | "gold" | "success" | "danger" | "warn"> = {
     DRAFT: "neutral",
@@ -39,7 +41,7 @@ export function quoteStatusTone(
     CANCELLED: "danger",
     EXPIRED: "warn",
   };
-  return map[status];
+  return (status && map[status as QuoteStatus]) || "neutral";
 }
 
 export function movementLabel(type: MovementType): string {

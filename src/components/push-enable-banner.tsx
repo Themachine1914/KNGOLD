@@ -16,7 +16,7 @@ export function PushEnableBanner() {
   const [hint, setHint] = useState("");
 
   useEffect(() => {
-    void registerPushServiceWorker();
+    void registerPushServiceWorker().catch(() => null);
 
     if (!pushSupported()) {
       // iOS Safari en pestaña: PushManager no existe hasta instalar en inicio
@@ -34,8 +34,8 @@ export function PushEnableBanner() {
     }
 
     if (Notification.permission === "granted") {
-      // Renovar suscripción en segundo plano
-      void enablePushNotifications();
+      // Renovar suscripción en segundo plano (sin tumbar Next por errores locales)
+      void enablePushNotifications().catch(() => null);
       return;
     }
     if (Notification.permission === "denied") return;

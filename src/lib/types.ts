@@ -153,9 +153,11 @@ export type DailyReservationClient = {
   customerName: string;
   units: number;
   transitUnits: number;
-  /** Dinero de lo reservado/apartado ese día en esta cotización */
+  /** Dinero de lo reservado/apartado ese día en este pedido */
   amount: number;
   lastAt: string;
+  /** Estado actual del pedido (Reservada, Facturada, …) */
+  status: QuoteStatus;
 };
 
 export type DailyInventorySummary = {

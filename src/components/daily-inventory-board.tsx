@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { DailyInventorySummary } from "@/lib/types";
+import { quoteStatusLabel, quoteStatusTone } from "@/lib/labels";
 import { formatRD } from "@/lib/pricing";
-import { Card } from "./ui";
+import { Badge, Card } from "./ui";
 
 function MoneyStat({
   label,
@@ -153,22 +154,26 @@ export function DailyInventoryBoard({
                           <li key={c.quoteId}>
                             <Link
                               href={`/quotes/${c.quoteId}`}
-                              className="flex items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2"
+                              className="flex items-start justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2"
                             >
                               <div className="min-w-0">
                                 <p className="truncate font-semibold text-ink">
-                                  {c.customerName}
+                                  #{c.number} · {c.customerName}
                                 </p>
                                 <p className="text-xs text-muted">
-                                  Cot. #{c.number} · {timeDO(c.lastAt)} · {c.units} UND
+                                  {timeDO(c.lastAt)} · {c.units} UND
                                   {c.transitUnits > 0
                                     ? ` · ${c.transitUnits} tránsito`
                                     : ""}
+                                  {" · "}
+                                  {formatRD(c.amount || 0)}
                                 </p>
                               </div>
-                              <p className="shrink-0 text-sm font-semibold tabular-nums text-gold-dark">
-                                {formatRD(c.amount || 0)}
-                              </p>
+                              <div className="shrink-0 text-right">
+                                <Badge tone={quoteStatusTone(c.status)}>
+                                  {quoteStatusLabel(c.status)}
+                                </Badge>
+                              </div>
                             </Link>
                           </li>
                         ))}
