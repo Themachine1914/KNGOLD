@@ -1,6 +1,6 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { COMPANY } from "@/lib/constants";
-import { paymentTermsLabel } from "@/lib/labels";
+import { conduceLabel, paymentTermsLabel } from "@/lib/labels";
 import { formatRD } from "@/lib/pricing";
 import type { PaymentTerms } from "@/lib/types";
 
@@ -101,7 +101,8 @@ export function QuoteDocument({ quote }: { quote: QuotePdfData }) {
               Fecha: {new Date(quote.createdAt).toLocaleString("es-DO")}
             </Text>
             <Text style={styles.muted}>
-              {paymentTermsLabel(quote.paymentTerms)}
+              {paymentTermsLabel(quote.paymentTerms)} ·{" "}
+              {conduceLabel(quote.includeItbis)}
             </Text>
             <Text style={styles.muted}>Vendedor: {quote.seller.name}</Text>
           </View>

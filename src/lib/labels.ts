@@ -1,8 +1,13 @@
 import type { ImportStatus, MovementType, PaymentTerms, QuoteStatus } from "./types";
 
-/** c/c = con comprobante · s/c = sin comprobante */
+/** C/C = con conduce · S/C = sin conduce (campo includeItbis). */
+export function conduceLabel(includeItbis: boolean): string {
+  return includeItbis ? "C/C" : "S/C";
+}
+
+/** @deprecated usar conduceLabel */
 export function comprobanteLabel(includeItbis: boolean): string {
-  return includeItbis ? "c/c" : "s/c";
+  return conduceLabel(includeItbis);
 }
 
 export function paymentTermsLabel(

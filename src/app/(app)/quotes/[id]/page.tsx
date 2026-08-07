@@ -5,6 +5,7 @@ import { isOpsManager } from "@/lib/roles";
 import { getProductsWithAvailability, getQuote } from "@/lib/inventory";
 import { formatRD } from "@/lib/pricing";
 import {
+  conduceLabel,
   paymentTermsLabel,
   quoteStatusLabel,
   quoteStatusTone,
@@ -87,8 +88,15 @@ export default async function QuoteDetailPage({
             </p>
           ) : null}
           <p>
-            <span className="text-muted">Comprobante:</span>{" "}
+            <span className="text-muted">Condición:</span>{" "}
             {paymentTermsLabel(quote.paymentTerms)}
+          </p>
+          <p>
+            <span className="text-muted">Conduce:</span>{" "}
+            {conduceLabel(quote.includeItbis)}{" "}
+            <span className="text-muted">
+              ({quote.includeItbis ? "con conduce" : "sin conduce"})
+            </span>
           </p>
         </Card>
 

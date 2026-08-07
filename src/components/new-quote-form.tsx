@@ -43,8 +43,8 @@ export function NewQuoteForm({
   });
   const [qtyByProduct, setQtyByProduct] = useState<Record<string, number>>({});
   const [priceByProduct, setPriceByProduct] = useState<Record<string, number>>({});
-  /** ITBIS interno: se mantiene c/c por defecto; la UI pide condición de venta. */
-  const [includeItbis] = useState(true);
+  /** C/C (con conduce) = true · S/C (sin conduce) = false */
+  const [includeItbis, setIncludeItbis] = useState<boolean | null>(null);
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerms | null>(null);
   const [filter, setFilter] = useState("");
 
@@ -75,7 +75,7 @@ export function NewQuoteForm({
 
   const totals = calcQuoteTotals(
     selectedLines.map((l) => l.lineTotal),
-    includeItbis
+    includeItbis === true
   );
   const totalUnits = selectedLines.reduce((s, l) => s + l.qty, 0);
 
@@ -92,6 +92,10 @@ export function NewQuoteForm({
   async function submit() {
     if (!paymentTerms) {
       setError("Elige la condición de venta: al contado o crédito a 30 días.");
+      return;
+    }
+    if (includeItbis === null) {
+      setError("Elige S/C (sin conduce) o C/C (con conduce).");
       return;
     }
     setLoading(true);
@@ -409,9 +413,40 @@ export function NewQuoteForm({
                 Crédito a 30 días
               </button>
             </div>
-            <p className="mt-2 text-xs text-muted">
-              Elige una opción para continuar.
-            </p>
+
+            <p className="mb-2 mt-4 font-semibold">Conduce</p>
+            <div className="grid grid-cols-2 gap-2" role="group">
+              <button
+                type="button"
+                aria-pressed={includeItbis === false}
+                onClick={() => setIncludeItbis(false)}
+                className={`min-h-11 rounded-xl border px-3 py-3 text-sm font-semibold ${
+                  includeItbis === false
+                    ? "border-ink bg-ink text-white"
+                    : "border-border bg-white text-ink"
+                }`}
+              >
+                S/C
+                <span className="mt-0.5 block text-[11px] font-normal opacity-80">
+                  Sin conduce
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={includeItbis === true}
+                onClick={() => setIncludeItbis(true)}
+                className={`min-h-11 rounded-xl border px-3 py-3 text-sm font-semibold ${
+                  includeItbis === true
+                    ? "border-ink bg-ink text-white"
+                    : "border-border bg-white text-ink"
+                }`}
+              >
+                C/C
+                <span className="mt-0.5 block text-[11px] font-normal opacity-80">
+                  Con conduce
+                </span>
+              </button>
+            </div>
           </Card>
 
           <Card className="space-y-2">
@@ -434,7 +469,7 @@ export function NewQuoteForm({
                 <span className="text-muted">Subtotal</span>
                 <span className="tabular-nums">{formatRD(totals.subtotal)}</span>
               </div>
-              {includeItbis ? (
+              {includeItbis === true ? (
                 <div className="flex justify-between text-ink/35">
                   <span>ITBIS (18%)</span>
                   <span className="tabular-nums">{formatRD(totals.itbisAmount)}</span>
@@ -468,7 +503,7 @@ export function NewQuoteForm({
               variant="gold"
               className="flex-1"
               loading={loading}
-              disabled={!paymentTerms}
+              disabled={!paymentTerms || includeItbis === null}
               onClick={submit}
             >
               {loading ? "Reservando…" : "Reservar y enviar"}

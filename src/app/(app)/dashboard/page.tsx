@@ -15,6 +15,7 @@ import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 import { formatRD } from "@/lib/pricing";
 import {
   importStatusLabel,
+  conduceLabel,
   paymentTermsLabel,
   importStatusTone,
   movementLabel,
@@ -234,7 +235,8 @@ export default async function DashboardPage() {
                     </p>
                     <p className="text-sm text-muted">
                       {formatRD(q.total)} ·{" "}
-                      {paymentTermsLabel(q.paymentTerms)}
+                      {paymentTermsLabel(q.paymentTerms)} ·{" "}
+                      {conduceLabel(q.includeItbis)}
                     </p>
                   </div>
                   <Badge tone={quoteStatusTone(q.status)}>

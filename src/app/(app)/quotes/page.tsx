@@ -12,6 +12,7 @@ import {
 } from "@/lib/list-filters";
 import { formatRD } from "@/lib/pricing";
 import {
+  conduceLabel,
   paymentTermsLabel,
   quoteStatusLabel,
   quoteStatusTone,
@@ -108,7 +109,8 @@ export default async function QuotesPage({
                     </p>
                     <p className="text-sm text-muted">
                       {(q.lines || []).length} ítems · {formatRD(q.total)} ·{" "}
-                      {paymentTermsLabel(q.paymentTerms)}
+                      {paymentTermsLabel(q.paymentTerms)} ·{" "}
+                      {conduceLabel(q.includeItbis)}
                     </p>
                     {isOwner ? (
                       <p className="mt-1 text-xs text-muted">{q.seller?.name}</p>

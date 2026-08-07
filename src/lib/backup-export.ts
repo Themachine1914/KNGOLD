@@ -149,6 +149,7 @@ export async function buildFullBackupZip(): Promise<{
           "cliente_id",
           "cliente",
           "incluye_itbis",
+          "conduce",
           "condicion_venta",
           "subtotal",
           "itbis",
@@ -167,6 +168,7 @@ export async function buildFullBackupZip(): Promise<{
           q.customerId,
           customerName.get(q.customerId) || "",
           q.includeItbis,
+          q.includeItbis ? "C/C" : "S/C",
           q.paymentTerms === "CREDITO_30"
             ? "Crédito a 30 días"
             : q.paymentTerms === "CONTADO"
