@@ -14,6 +14,15 @@ export type ShareQuotePdfResult =
   | "cancelled"
   | "error";
 
+function openWindow(url: string): Window | null {
+  try {
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    return w && !w.closed ? w : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function shareQuotePdf(opts: {
   quoteId: string;
   number: number;
@@ -31,13 +40,28 @@ export async function shareQuotePdf(opts: {
     .filter(Boolean)
     .join("\n");
 
-  // Abrir en el mismo gesto del usuario (si se espera al fetch, el popup se bloquea).
-  let opened = false;
-  try {
-    const w = window.open(pdfPath, "_blank", "noopener,noreferrer");
-    opened = Boolean(w && !w.closed);
-  } catch {
-    opened = false;
+  const waPhone = toWhatsAppPhone(opts.customerPhone);
+  const waUrl = waPhone
+    ? `https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`
+    : null;
+
+  const isMobile =
+    typeof navigator !== "undefined" &&
+    /Android|webOS|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
+
+  // Pre-open on user gesture before async work (popup blockers).
+  // On mobile with WhatsApp, prefer the native share sheet over extra tabs.
+  let pdfWindow: Window | null = null;
+  let waWindow: Window | null = null;
+
+  if (!isMobile || !waUrl) {
+    pdfWindow = openWindow(pdfPath);
+  }
+
+  if (waUrl && !isMobile) {
+    waWindow = openWindow(waUrl);
   }
 
   try {
@@ -59,27 +83,41 @@ export async function shareQuotePdf(opts: {
           title: `Pedido #${opts.number}`,
           text,
         });
+        waWindow?.close();
         return "shared";
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
-          return opened ? "opened" : "cancelled";
+          if (waWindow) return "whatsapp";
+          if (pdfWindow) return "opened";
+          return "cancelled";
         }
       }
     }
 
-    const waPhone = toWhatsAppPhone(opts.customerPhone);
-    if (waPhone) {
-      const url = `https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`;
-      window.open(url, "_blank", "noopener,noreferrer");
-      if (!opened) {
-        window.open(pdfPath, "_blank", "noopener,noreferrer");
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: `Pedido #${opts.number}`, text });
+        if (!pdfWindow) {
+          pdfWindow = openWindow(pdfPath);
+        }
+        return "shared";
+      } catch {
+        /* continue to WhatsApp / open */
+      }
+    }
+
+    if (waUrl) {
+      if (!waWindow) {
+        waWindow = openWindow(waUrl);
+      }
+      if (!pdfWindow) {
+        pdfWindow = openWindow(pdfPath);
       }
       return "whatsapp";
     }
 
-    if (opened) return "opened";
+    if (pdfWindow) return "opened";
 
-    // Último recurso: forzar descarga / apertura por enlace
     const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = objectUrl;
@@ -92,6 +130,8 @@ export async function shareQuotePdf(opts: {
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     return "opened";
   } catch {
-    return opened ? "opened" : "error";
+    if (waWindow) return "whatsapp";
+    if (pdfWindow) return "opened";
+    return "error";
   }
 }
