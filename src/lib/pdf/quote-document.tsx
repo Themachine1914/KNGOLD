@@ -162,11 +162,7 @@ export function QuoteDocument({ quote }: { quote: QuotePdfData }) {
 
         <Text style={styles.footer}>
           Documento interno de pedido KN GOLD. No constituye e-NCF ni comprobante fiscal
-          DGII. Validez de reserva sujeta a confirmación
-          {quote.reservedUntil
-            ? ` (hasta ${new Date(quote.reservedUntil).toLocaleString("es-DO")})`
-            : ""}
-          .
+          DGII. La reserva se mantiene hasta facturar o anular el pedido.
         </Text>
       </Page>
     </Document>

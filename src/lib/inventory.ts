@@ -1,4 +1,3 @@
-import { addHours } from "date-fns";
 import { getDb, newId } from "./firebase";
 import { calcQuoteTotals, formatRD, round2 } from "./pricing";
 import type {
@@ -14,20 +13,9 @@ import type {
   User,
 } from "./types";
 
-function reservationHours(): number {
-  // Ojo con el "0": es un valor válido (reserva inmediata) y un `||` lo
-  // trataría como ausente, igual que un valor no numérico.
-  const raw = process.env.RESERVATION_HOURS;
-  if (raw == null || raw === "") return 48;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 48;
-}
-
-/** Una reserva vencida ya no aparta stock, aunque nadie la haya expirado aún. */
+/** Reserva activa: sin vencimiento; solo se libera al facturar o anular. */
 function stillReserving(data: FirebaseFirestore.DocumentData): boolean {
-  if (data.status !== "RESERVED") return false;
-  const until = data.reservedUntil as string | null | undefined;
-  return !!until && new Date(until).getTime() > Date.now();
+  return data.status === "RESERVED";
 }
 
 /** Unidades de la línea que ya están en almacén (no en tránsito). */
@@ -359,7 +347,6 @@ export async function createReservedQuote(input: {
   const number = await nextNumber("quotes");
   const quoteId = newId();
   const now = new Date().toISOString();
-  const reservedUntil = addHours(new Date(), reservationHours()).toISOString();
 
   const quote: Quote = {
     id: quoteId,
@@ -372,7 +359,7 @@ export async function createReservedQuote(input: {
     subtotal: totals.subtotal,
     itbisAmount: totals.itbisAmount,
     total: totals.total,
-    reservedUntil,
+    reservedUntil: null,
     notes: input.notes || null,
     createdAt: now,
     updatedAt: now,
@@ -454,11 +441,6 @@ export async function confirmQuote(quoteId: string, userId: string) {
 
     if (quote.status !== "RESERVED") {
       throw new Error("Solo se pueden confirmar pedidos reservados.");
-    }
-    if (quote.reservedUntil && new Date(quote.reservedUntil).getTime() <= Date.now()) {
-      throw new Error(
-        "La reserva venció y el stock volvió a estar disponible. Crea un pedido nuevo."
-      );
     }
 
     const lines = quote.lines || [];
@@ -913,44 +895,9 @@ async function updateConfirmedQuoteLines(
   };
 }
 
+/** Las reservas ya no vencen por tiempo; se mantiene por compatibilidad del cron. */
 export async function expireReservedQuotes(): Promise<number> {
-  const now = new Date().toISOString();
-  const snap = await getDb()
-    .collection("quotes")
-    .where("status", "==", "RESERVED")
-    .get();
-  let count = 0;
-  for (const doc of snap.docs) {
-    const candidate = { id: doc.id, ...doc.data() } as Quote;
-    if (!candidate.reservedUntil || candidate.reservedUntil >= now) continue;
-
-    const quote = await claimQuote(
-      doc.id,
-      (q) =>
-        q.status === "RESERVED" &&
-        !!q.reservedUntil &&
-        new Date(q.reservedUntil).getTime() <= Date.now(),
-      { status: "EXPIRED", reservedUntil: null }
-    );
-    if (!quote) continue;
-
-    for (const line of quote.lines || []) {
-      const product = await getProduct(line.productId);
-      const reservedOthers = await getReservedQty(line.productId, quote.id);
-      await writeMovement({
-        productId: line.productId,
-        type: "LIBERACION_RESERVA",
-        qty: line.qty,
-        transitQty: transitPortion(line),
-        stockAfter: product.stockOnHand,
-        availableAfter: product.stockOnHand - reservedOthers,
-        quoteId: quote.id,
-        note: `Expiración automática pedido #${quote.number}`,
-      });
-    }
-    count++;
-  }
-  return count;
+  return 0;
 }
 
 export async function adjustStock(input: {

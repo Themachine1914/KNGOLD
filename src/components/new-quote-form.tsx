@@ -497,7 +497,8 @@ export function NewQuoteForm({
               />
             </div>
             <p className="text-xs text-muted">
-              Al confirmar se reserva el inventario por 48 horas.
+              Al confirmar se reserva el inventario hasta facturar o anular el
+              pedido.
             </p>
           </Card>
 

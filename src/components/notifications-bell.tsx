@@ -1,30 +1,53 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  playNotificationSound,
+  unlockNotificationSound,
+} from "@/lib/notification-sound";
 
 export function NotificationsBell() {
   const [unread, setUnread] = useState(0);
+  const prevUnread = useRef<number | null>(null);
+  const primed = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
       const res = await fetch("/api/notifications", { cache: "no-store" });
       if (!res.ok) return;
       const data = (await res.json()) as { unread?: number };
-      setUnread(Number(data.unread) || 0);
+      const next = Number(data.unread) || 0;
+
+      if (prevUnread.current !== null && next > prevUnread.current) {
+        playNotificationSound();
+      }
+      prevUnread.current = next;
+      setUnread(next);
     } catch {
       /* ignore */
     }
   }, []);
 
   useEffect(() => {
+    const prime = () => {
+      if (primed.current) return;
+      primed.current = true;
+      void unlockNotificationSound();
+    };
+    window.addEventListener("pointerdown", prime, { once: true });
+    window.addEventListener("keydown", prime, { once: true });
+
     void refresh();
-    const id = window.setInterval(() => void refresh(), 25_000);
+    const id = window.setInterval(() => void refresh(), 12_000);
     const onFocus = () => void refresh();
     window.addEventListener("focus", onFocus);
+
     return () => {
       window.clearInterval(id);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pointerdown", prime);
+      window.removeEventListener("keydown", prime);
     };
   }, [refresh]);
 

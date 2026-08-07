@@ -80,10 +80,10 @@ export default async function QuoteDetailPage({
             <span className="text-muted">Creada:</span>{" "}
             {format(parseISO(quote.createdAt), "dd MMM yyyy HH:mm", { locale: es })}
           </p>
-          {quote.reservedUntil && quote.status === "RESERVED" ? (
+          {quote.status === "RESERVED" ? (
             <p>
-              <span className="text-muted">Reserva hasta:</span>{" "}
-              {format(parseISO(quote.reservedUntil), "dd MMM HH:mm", { locale: es })}
+              <span className="text-muted">Reserva:</span> indefinida (hasta
+              facturar o anular)
             </p>
           ) : null}
           <p>
