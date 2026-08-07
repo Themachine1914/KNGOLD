@@ -176,7 +176,6 @@ export function NewProductForm({ typeSuggestions = [] }: { typeSuggestions?: str
                       id="np-photo"
                       type="file"
                       accept="image/jpeg,image/png,image/webp,image/*"
-                      capture="environment"
                       onChange={(e) => onPickPhoto(e.target.files?.[0] || null)}
                     />
                     {photo ? (
@@ -188,7 +187,9 @@ export function NewProductForm({ typeSuggestions = [] }: { typeSuggestions?: str
                         Quitar foto
                       </button>
                     ) : (
-                      <p className="text-xs text-muted">JPG, PNG o WebP. Opcional.</p>
+                      <p className="text-xs text-muted">
+                        Galería o cámara. JPG, PNG o WebP. Opcional.
+                      </p>
                     )}
                   </div>
                 </div>
