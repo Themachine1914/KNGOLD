@@ -42,30 +42,25 @@ export default async function DashboardPage() {
   const sellerId = session!.user.id;
   await safe(() => expireReservedQuotes(), 0);
 
-  // Cargas en serie y con fallback: evita tumbar toda la página si Firebase
-  // está al límite, y reduce picos de lecturas concurrentes.
-  const products = await safe(() => getProductsWithAvailability(), []);
+  // En paralelo y con fallback individual: cada bloque falla solo, sin tumbar
+  // la página. Antes iban en serie para no saturar Firebase, pero ahora cada
+  // carga agrupa sus lecturas y el panel entero cabe en unas pocas consultas.
+  const [
+    products,
+    reservedQuotes,
+    upcomingImports,
+    recentMovements,
+    recentQuotes,
+    dailyInventory,
+  ] = await Promise.all([
+    safe(() => getProductsWithAvailability(), []),
+    safe(() => countReservedQuotes(isManager ? undefined : sellerId), 0),
+    isManager ? safe(() => listUpcomingImports(5), []) : [],
+    isManager ? safe(() => listMovements(8), []) : [],
+    safe(() => listQuotes(isManager ? undefined : sellerId, isManager ? 5 : 8), []),
+    isManager ? safe(() => getDailyInventorySummaries(7), []) : [],
+  ]);
   const lowStock = products.filter((p) => (p.available ?? 0) <= LOW_STOCK_THRESHOLD);
-  const reservedQuotes = await safe(
-    () => countReservedQuotes(isManager ? undefined : sellerId),
-    0
-  );
-  const upcomingImports = isManager
-    ? await safe(() => listUpcomingImports(5), [])
-    : [];
-  const recentMovements = isManager
-    ? await safe(() => listMovements(8), [])
-    : [];
-  const myQuotes = isManager
-    ? []
-    : await safe(() => listQuotes(sellerId), []);
-  const recentQuotes = isManager
-    ? (await safe(() => listQuotes(), [])).slice(0, 5)
-    : myQuotes.slice(0, 8);
-  // El tablero diario lee muchos movimientos; si falla, el resto del panel sigue.
-  const dailyInventory = isManager
-    ? await safe(() => getDailyInventorySummaries(7), [])
-    : [];
   const partial =
     products.length === 0 &&
     recentQuotes.length === 0 &&

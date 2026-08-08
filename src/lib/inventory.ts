@@ -1,4 +1,4 @@
-import { getDb, newId } from "./firebase";
+import { getDb, getDocsByIds, newId } from "./firebase";
 import { calcQuoteTotals, formatRD, round2 } from "./pricing";
 import type {
   Customer,
@@ -86,17 +86,94 @@ export async function getTransitApartadoQty(
 
 /** Unidades pedidas/en tránsito (importaciones abiertas). */
 export async function getInTransitQty(productId: string): Promise<number> {
-  const snap = await getDb().collection("imports").get();
+  const snap = await openImportsQuery().get();
   let total = 0;
   for (const doc of snap.docs) {
-    const status = doc.data().status as string;
-    if (status !== "ORDERED" && status !== "IN_TRANSIT") continue;
     const lines = (doc.data().lines || []) as { productId: string; qty: number }[];
     for (const line of lines) {
       if (line.productId === productId) total += Number(line.qty || 0);
     }
   }
   return total;
+}
+
+/** Importaciones aún no recibidas; se filtran en Firestore, no en memoria. */
+function openImportsQuery() {
+  return getDb()
+    .collection("imports")
+    .where("status", "in", ["ORDERED", "IN_TRANSIT"]);
+}
+
+export interface AvailabilitySnapshot {
+  /** productId -> unidades reservadas sobre stock físico */
+  reserved: Map<string, number>;
+  /** productId -> unidades apartadas contra mercancía en tránsito */
+  transitApartado: Map<string, number>;
+  /** productId -> unidades viniendo en importaciones abiertas */
+  inTransit: Map<string, number>;
+}
+
+/**
+ * Calcula de una vez la disponibilidad de **todos** los productos, en dos
+ * consultas.
+ *
+ * Antes cada producto costaba tres lecturas de colección completa
+ * (`getReservedQty` + `getTransitApartadoQty` + `getInTransitQty`), así que un
+ * pedido de cinco líneas hacía quince barridos idénticos de la base.
+ */
+export async function loadAvailabilitySnapshot(
+  excludeQuoteId?: string
+): Promise<AvailabilitySnapshot> {
+  const [quotes, imports] = await Promise.all([
+    getDb().collection("quotes").where("status", "==", "RESERVED").get(),
+    openImportsQuery().get(),
+  ]);
+
+  const reserved = new Map<string, number>();
+  const transitApartado = new Map<string, number>();
+  for (const doc of quotes.docs) {
+    if (excludeQuoteId && doc.id === excludeQuoteId) continue;
+    if (!stillReserving(doc.data())) continue;
+    for (const line of (doc.data().lines || []) as QuoteLine[]) {
+      const add = (map: Map<string, number>, qty: number) =>
+        map.set(line.productId, (map.get(line.productId) || 0) + qty);
+      add(reserved, stockPortion(line));
+      add(transitApartado, transitPortion(line));
+    }
+  }
+
+  const inTransit = new Map<string, number>();
+  for (const doc of imports.docs) {
+    for (const line of (doc.data().lines || []) as { productId: string; qty: number }[]) {
+      inTransit.set(
+        line.productId,
+        (inTransit.get(line.productId) || 0) + Number(line.qty || 0)
+      );
+    }
+  }
+
+  return { reserved, transitApartado, inTransit };
+}
+
+/** Disponibilidad de un producto a partir de un snapshot ya cargado. */
+export function availabilityFor(
+  snapshot: AvailabilitySnapshot,
+  productId: string,
+  stockOnHand: number
+) {
+  const reserved = snapshot.reserved.get(productId) || 0;
+  const inTransit = snapshot.inTransit.get(productId) || 0;
+  const transitApartado = snapshot.transitApartado.get(productId) || 0;
+  const available = stockOnHand - reserved;
+  const availableTransit = Math.max(0, inTransit - transitApartado);
+  return {
+    reserved,
+    available,
+    inTransit,
+    transitApartado,
+    availableTransit,
+    availableTotal: available + availableTransit,
+  };
 }
 
 /**
@@ -152,55 +229,11 @@ export async function getProductsWithAvailability(): Promise<Product[]> {
     a.type === b.type ? a.name.localeCompare(b.name) : a.type.localeCompare(b.type)
   );
 
-  const reservedMap = new Map<string, number>();
-  const transitApartadoMap = new Map<string, number>();
-  const quotes = await getDb()
-    .collection("quotes")
-    .where("status", "==", "RESERVED")
-    .get();
-  for (const q of quotes.docs) {
-    if (!stillReserving(q.data())) continue;
-    for (const line of (q.data().lines || []) as QuoteLine[]) {
-      reservedMap.set(
-        line.productId,
-        (reservedMap.get(line.productId) || 0) + stockPortion(line)
-      );
-      transitApartadoMap.set(
-        line.productId,
-        (transitApartadoMap.get(line.productId) || 0) + transitPortion(line)
-      );
-    }
-  }
-
-  const inTransitMap = new Map<string, number>();
-  const imports = await getDb().collection("imports").get();
-  for (const doc of imports.docs) {
-    const status = doc.data().status as string;
-    if (status !== "ORDERED" && status !== "IN_TRANSIT") continue;
-    for (const line of (doc.data().lines || []) as { productId: string; qty: number }[]) {
-      inTransitMap.set(
-        line.productId,
-        (inTransitMap.get(line.productId) || 0) + Number(line.qty || 0)
-      );
-    }
-  }
-
-  return products.map((p) => {
-    const reserved = reservedMap.get(p.id) || 0;
-    const available = p.stockOnHand - reserved;
-    const inTransit = inTransitMap.get(p.id) || 0;
-    const transitApartado = transitApartadoMap.get(p.id) || 0;
-    const availableTransit = Math.max(0, inTransit - transitApartado);
-    return {
-      ...p,
-      reserved,
-      available,
-      inTransit,
-      transitApartado,
-      availableTransit,
-      availableTotal: available + availableTransit,
-    };
-  });
+  const snapshot = await loadAvailabilitySnapshot();
+  return products.map((p) => ({
+    ...p,
+    ...availabilityFor(snapshot, p.id, p.stockOnHand),
+  }));
 }
 
 async function nextNumber(counter: "quotes" | "imports"): Promise<number> {
@@ -291,17 +324,22 @@ export async function createReservedQuote(input: {
   };
   const planned: Planned[] = [];
 
+  // Un solo vistazo a la disponibilidad y una sola lectura de productos para
+  // todo el pedido, en vez de cuatro consultas por línea.
+  const [snapshot, productsById] = await Promise.all([
+    loadAvailabilitySnapshot(),
+    getDocsByIds<Product>("products", input.lines.map((l) => l.productId)),
+  ]);
+
   for (const line of input.lines) {
     if (!Number.isInteger(line.qty) || line.qty <= 0) {
       throw new Error("Cantidad inválida: debe ser un número entero positivo.");
     }
-    const product = await getProduct(line.productId);
-    const reserved = await getReservedQty(line.productId);
-    const availableStock = product.stockOnHand - reserved;
-    const inTransit = await getInTransitQty(line.productId);
-    const transitApartado = await getTransitApartadoQty(line.productId);
-    const availableTransit = Math.max(0, inTransit - transitApartado);
-    const availableTotal = availableStock + availableTransit;
+    const raw = productsById.get(line.productId);
+    if (!raw) throw new Error("Producto no encontrado");
+    const product = assertProduct(raw as unknown as Record<string, unknown>, line.productId);
+    const { available: availableStock, availableTransit, availableTotal } =
+      availabilityFor(snapshot, line.productId, product.stockOnHand);
 
     if (line.qty > availableTotal) {
       throw new Error(
@@ -1188,8 +1226,14 @@ function parseTransitSplit(
 export async function getDailyInventorySummaries(
   dayCount = 14
 ): Promise<DailyInventorySummary[]> {
+  // Solo se pintan `dayCount` días, así que se corta por fecha en Firestore en
+  // vez de bajar 800 movimientos y descartar casi todos. El límite se queda
+  // como tope de seguridad si un día tuviera muchísima actividad.
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - (dayCount + 1));
   const snap = await getDb()
     .collection("movements")
+    .where("createdAt", ">=", cutoff.toISOString())
     .orderBy("createdAt", "desc")
     .limit(800)
     .get();
@@ -1262,33 +1306,28 @@ export async function getDailyInventorySummaries(
     unitByProduct: Map<string, number>;
   };
   const quoteMeta = new Map<string, QuoteMeta>();
-  await Promise.all(
-    [...quoteIdsNeeded].map(async (id) => {
-      const q = await getDb().collection("quotes").doc(id).get();
-      if (!q.exists) return;
-      const data = q.data()!;
-      let customerName = "Cliente";
-      if (data.customerId) {
-        const c = await getDb()
-          .collection("customers")
-          .doc(String(data.customerId))
-          .get();
-        if (c.exists) customerName = String(c.data()?.name || "Cliente");
-      }
-      const unitByProduct = new Map<string, number>();
-      for (const line of (data.lines || []) as QuoteLine[]) {
-        unitByProduct.set(line.productId, Number(line.unitPrice || 0));
-      }
-      const status = String(data.status || "RESERVED") as Quote["status"];
-      quoteMeta.set(id, {
-        number: Number(data.number || 0),
-        customerName,
-        total: Number(data.total || 0),
-        status,
-        unitByProduct,
-      });
-    })
+  // Dos lecturas agrupadas (pedidos, luego sus clientes) en lugar de dos por
+  // cada pedido que aparezca en los movimientos del periodo.
+  const quoteDocs = await getDocsByIds<Quote>("quotes", quoteIdsNeeded);
+  const customerDocs = await getDocsByIds<Customer>(
+    "customers",
+    [...quoteDocs.values()].map((q) => q.customerId)
   );
+  for (const [id, data] of quoteDocs) {
+    const unitByProduct = new Map<string, number>();
+    for (const line of (data.lines || []) as QuoteLine[]) {
+      unitByProduct.set(line.productId, Number(line.unitPrice || 0));
+    }
+    quoteMeta.set(id, {
+      number: Number(data.number || 0),
+      customerName: String(
+        (data.customerId && customerDocs.get(data.customerId)?.name) || "Cliente"
+      ),
+      total: Number(data.total || 0),
+      status: String(data.status || "RESERVED") as Quote["status"],
+      unitByProduct,
+    });
+  }
 
   function unitPrice(quoteId: string | null | undefined, productId: string): number {
     if (!quoteId) return 0;
@@ -1439,38 +1478,58 @@ export async function listMovements(limit = 100): Promise<InventoryMovement[]> {
     .limit(limit)
     .get();
 
-  const out: InventoryMovement[] = [];
-  for (const doc of snap.docs) {
-    const m = { id: doc.id, ...doc.data() } as InventoryMovement;
-    try {
-      m.product = await getProduct(m.productId);
-    } catch {
-      m.product = undefined;
-    }
+  const movements = snap.docs.map(
+    (doc) => ({ id: doc.id, ...doc.data() }) as InventoryMovement
+  );
+
+  // Una lectura agrupada por colección en vez de tres por cada movimiento.
+  const [products, users, quotes] = await Promise.all([
+    getDocsByIds<Product>("products", movements.map((m) => m.productId)),
+    getDocsByIds<{ name?: string }>("users", movements.map((m) => m.userId)),
+    getDocsByIds<{ number?: number }>("quotes", movements.map((m) => m.quoteId)),
+  ]);
+
+  for (const m of movements) {
+    m.product = products.get(m.productId);
     if (m.userId) {
-      const u = await getDb().collection("users").doc(m.userId).get();
-      m.user = u.exists ? { name: String(u.data()?.name || "Usuario") } : null;
+      const u = users.get(m.userId);
+      m.user = u ? { name: String(u.name || "Usuario") } : null;
     }
     if (m.quoteId) {
-      const q = await getDb().collection("quotes").doc(m.quoteId).get();
-      m.quote = q.exists ? { number: Number(q.data()?.number || 0) } : null;
+      const q = quotes.get(m.quoteId);
+      m.quote = q ? { number: Number(q.number || 0) } : null;
     }
-    out.push(m);
   }
-  return out;
+  return movements;
 }
 
-export async function listQuotes(sellerId?: string): Promise<Quote[]> {
-  const snap = await getDb().collection("quotes").get();
+/**
+ * @param limit corta la lectura en Firestore. El panel solo pinta unos pocos
+ *   pedidos, así que traerlos todos era trabajo tirado a la basura.
+ */
+export async function listQuotes(
+  sellerId?: string,
+  limit?: number
+): Promise<Quote[]> {
+  let query = getDb()
+    .collection("quotes")
+    .orderBy("createdAt", "desc") as FirebaseFirestore.Query;
+  // Filtrar por vendedor en Firestore exigiría un índice compuesto, así que se
+  // filtra en memoria: por eso el limit se aplica después del filtro.
+  if (limit && !sellerId) query = query.limit(limit);
+  const snap = await query.get();
+
   let quotes = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Quote[];
   if (sellerId) quotes = quotes.filter((q) => q.sellerId === sellerId);
-  quotes.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+  if (limit) quotes = quotes.slice(0, limit);
 
+  const [customers, sellers] = await Promise.all([
+    getDocsByIds<Customer>("customers", quotes.map((q) => q.customerId)),
+    getDocsByIds<User>("users", quotes.map((q) => q.sellerId)),
+  ]);
   for (const q of quotes) {
-    const c = await getDb().collection("customers").doc(q.customerId).get();
-    if (c.exists) q.customer = { id: c.id, ...c.data() } as Customer;
-    const s = await getDb().collection("users").doc(q.sellerId).get();
-    if (s.exists) q.seller = { id: s.id, ...s.data() } as User;
+    q.customer = customers.get(q.customerId);
+    q.seller = sellers.get(q.sellerId);
   }
   return quotes;
 }
@@ -1479,27 +1538,28 @@ export async function getQuote(id: string): Promise<Quote | null> {
   const doc = await getDb().collection("quotes").doc(id).get();
   if (!doc.exists) return null;
   const quote = { id: doc.id, ...doc.data() } as Quote;
-  const c = await getDb().collection("customers").doc(quote.customerId).get();
-  if (c.exists) quote.customer = { id: c.id, ...c.data() } as Customer;
-  const s = await getDb().collection("users").doc(quote.sellerId).get();
-  if (s.exists) quote.seller = { id: s.id, ...s.data() } as User;
-  if (quote.lines) {
-    for (const line of quote.lines) {
-      try {
-        line.product = await getProduct(line.productId);
-      } catch {
-        /* ignore */
-      }
-    }
+
+  const [customers, sellers, products] = await Promise.all([
+    getDocsByIds<Customer>("customers", [quote.customerId]),
+    getDocsByIds<User>("users", [quote.sellerId]),
+    getDocsByIds<Product>(
+      "products",
+      (quote.lines || []).map((line) => line.productId)
+    ),
+  ]);
+
+  quote.customer = customers.get(quote.customerId);
+  quote.seller = sellers.get(quote.sellerId);
+  for (const line of quote.lines || []) {
+    line.product = products.get(line.productId);
   }
   return quote;
 }
 
 export async function countReservedQuotes(sellerId?: string): Promise<number> {
-  const snap = await getDb()
-    .collection("quotes")
-    .where("status", "==", "RESERVED")
-    .get();
-  if (!sellerId) return snap.size;
-  return snap.docs.filter((d) => d.data().sellerId === sellerId).length;
+  const base = getDb().collection("quotes").where("status", "==", "RESERVED");
+  // count() se resuelve en el servidor: no descarga los documentos.
+  const query = sellerId ? base.where("sellerId", "==", sellerId) : base;
+  const agg = await query.count().get();
+  return agg.data().count;
 }

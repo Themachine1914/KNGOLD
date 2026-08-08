@@ -53,3 +53,33 @@ export function getDb(): Firestore {
 export function newId(): string {
   return getDb().collection("_").doc().id;
 }
+
+/** getAll() streams in one request; chunked so huge lists stay well-behaved. */
+const BATCH_GET_CHUNK = 300;
+
+/**
+ * Lee muchos documentos por id en **una sola ida y vuelta** a Firestore.
+ *
+ * Sustituye al patrón `for (const x of xs) await doc(x).get()`, que en listas
+ * de 8 filas ya costaba segundos: cada `.get()` es un viaje de red completo.
+ * Devuelve un mapa id -> datos; los ids que no existen simplemente no aparecen.
+ */
+export async function getDocsByIds<T>(
+  collection: string,
+  ids: Iterable<string | undefined | null>
+): Promise<Map<string, T>> {
+  const unique = [...new Set([...ids].filter((id): id is string => Boolean(id)))];
+  const out = new Map<string, T>();
+  if (unique.length === 0) return out;
+
+  const db = getDb();
+  for (let i = 0; i < unique.length; i += BATCH_GET_CHUNK) {
+    const chunk = unique.slice(i, i + BATCH_GET_CHUNK);
+    const refs = chunk.map((id) => db.collection(collection).doc(id));
+    const docs = await db.getAll(...refs);
+    for (const doc of docs) {
+      if (doc.exists) out.set(doc.id, { id: doc.id, ...doc.data() } as T);
+    }
+  }
+  return out;
+}
