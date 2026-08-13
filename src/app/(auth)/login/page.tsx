@@ -39,14 +39,16 @@ function LoginForm() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col justify-center px-5 py-10">
       <div className="mb-8">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/brand/logo.png"
-          alt="KN GOLD"
-          width={112}
-          height={112}
-          className="mb-4 h-28 w-28 object-contain"
-        />
+        <div className="mb-4 inline-flex rounded-[22%] bg-background p-3 shadow-sm ring-1 ring-border/60">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/brand/logo.png"
+            alt="KN GOLD"
+            width={96}
+            height={96}
+            className="h-24 w-24 object-contain"
+          />
+        </div>
         <p
           className="text-4xl text-ink"
           style={{ fontFamily: "var(--font-brand), serif" }}
