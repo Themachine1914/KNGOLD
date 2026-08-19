@@ -94,6 +94,13 @@ export default async function ProductHistoryPage({
           </div>
         </Card>
 
+        <a
+          href={`/api/inventory/${encodeURIComponent(product.sku)}/pdf`}
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-gold px-4 py-3 text-sm font-semibold text-ink"
+        >
+          Descargar resumen PDF
+        </a>
+
         <Card>
           <p className="font-semibold text-ink">Registro</p>
           <p className="mt-1 text-sm text-muted">
