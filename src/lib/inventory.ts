@@ -8,9 +8,13 @@ import type {
   MovementType,
   Product,
   PaymentTerms,
+  ProductHistory,
+  ProductIncomingLot,
+  ProductReservationHold,
   Quote,
   QuoteLine,
   User,
+  ImportOrder,
 } from "./types";
 
 /** Reserva activa: sin vencimiento; solo se libera al facturar o anular. */
@@ -121,14 +125,11 @@ export interface AvailabilitySnapshot {
  * (`getReservedQty` + `getTransitApartadoQty` + `getInTransitQty`), así que un
  * pedido de cinco líneas hacía quince barridos idénticos de la base.
  */
-export async function loadAvailabilitySnapshot(
+function snapshotFromDocs(
+  quotes: FirebaseFirestore.QuerySnapshot,
+  imports: FirebaseFirestore.QuerySnapshot,
   excludeQuoteId?: string
-): Promise<AvailabilitySnapshot> {
-  const [quotes, imports] = await Promise.all([
-    getDb().collection("quotes").where("status", "==", "RESERVED").get(),
-    openImportsQuery().get(),
-  ]);
-
+): AvailabilitySnapshot {
   const reserved = new Map<string, number>();
   const transitApartado = new Map<string, number>();
   for (const doc of quotes.docs) {
@@ -153,6 +154,16 @@ export async function loadAvailabilitySnapshot(
   }
 
   return { reserved, transitApartado, inTransit };
+}
+
+export async function loadAvailabilitySnapshot(
+  excludeQuoteId?: string
+): Promise<AvailabilitySnapshot> {
+  const [quotes, imports] = await Promise.all([
+    getDb().collection("quotes").where("status", "==", "RESERVED").get(),
+    openImportsQuery().get(),
+  ]);
+  return snapshotFromDocs(quotes, imports, excludeQuoteId);
 }
 
 /** Disponibilidad de un producto a partir de un snapshot ya cargado. */
@@ -234,6 +245,179 @@ export async function getProductsWithAvailability(): Promise<Product[]> {
     ...p,
     ...availabilityFor(snapshot, p.id, p.stockOnHand),
   }));
+}
+
+async function findProductDoc(ref: string): Promise<FirebaseFirestore.DocumentSnapshot | null> {
+  const db = getDb();
+  const trimmed = (() => {
+    try {
+      return decodeURIComponent(ref || "").trim();
+    } catch {
+      return (ref || "").trim();
+    }
+  })();
+  if (!trimmed) return null;
+
+  const byId = await db.collection("products").doc(trimmed).get();
+  if (byId.exists) return byId;
+
+  const sku = trimmed.toUpperCase();
+  const bySku = await db.collection("products").where("sku", "==", sku).limit(1).get();
+  if (!bySku.empty) return bySku.docs[0];
+  if (sku !== trimmed) {
+    const bySkuRaw = await db.collection("products").where("sku", "==", trimmed).limit(1).get();
+    if (!bySkuRaw.empty) return bySkuRaw.docs[0];
+  }
+  return null;
+}
+
+function movementStats(movements: InventoryMovement[]): ProductHistory["stats"] {
+  let soldQty = 0;
+  let enteredQty = 0;
+  let firstMovementAt: string | null = null;
+  let lastMovementAt: string | null = null;
+  for (const m of movements) {
+    if (m.type === "CONFIRMACION_VENTA") soldQty += m.qty;
+    if (m.type === "ANULACION_VENTA") soldQty -= m.qty;
+    if (m.type === "ENTRADA") enteredQty += m.qty;
+    if (!firstMovementAt || m.createdAt < firstMovementAt) firstMovementAt = m.createdAt;
+    if (!lastMovementAt || m.createdAt > lastMovementAt) lastMovementAt = m.createdAt;
+  }
+  return { soldQty: Math.max(0, soldQty), enteredQty, firstMovementAt, lastMovementAt };
+}
+
+function allocateIncomingLots(
+  lots: Omit<ProductIncomingLot, "reservedOnArrival" | "freeOnArrival">[],
+  transitApartado: number
+): ProductIncomingLot[] {
+  let remaining = Math.max(0, transitApartado);
+  return lots.map((lot) => {
+    const reservedOnArrival = Math.min(lot.qty, remaining);
+    remaining -= reservedOnArrival;
+    return { ...lot, reservedOnArrival, freeOnArrival: lot.qty - reservedOnArrival };
+  });
+}
+
+/**
+ * Ficha de un producto: disponibilidad, quién retiene unidades, qué llega
+ * (y cuánto de eso ya está apartado para despachar) y la bitácora.
+ */
+export async function getProductHistory(ref: string): Promise<ProductHistory | null> {
+  const doc = await findProductDoc(ref);
+  if (!doc) return null;
+  const product = assertProduct(doc.data() as Record<string, unknown>, doc.id);
+
+  const [quotesSnap, importsSnap, movementsSnap] = await Promise.all([
+    getDb().collection("quotes").where("status", "==", "RESERVED").get(),
+    openImportsQuery().get(),
+    getDb().collection("movements").where("productId", "==", product.id).get(),
+  ]);
+
+  const snapshot = snapshotFromDocs(quotesSnap, importsSnap);
+  const availability = availabilityFor(snapshot, product.id, product.stockOnHand);
+  const productWithAvail: Product = { ...product, ...availability };
+
+  const holdDrafts: (Omit<ProductReservationHold, "customerName" | "sellerName"> & {
+    customerId: string;
+  })[] = [];
+  for (const qdoc of quotesSnap.docs) {
+    if (!stillReserving(qdoc.data())) continue;
+    const quote = { id: qdoc.id, ...qdoc.data() } as Quote;
+    for (const line of quote.lines || []) {
+      if (line.productId !== product.id) continue;
+      holdDrafts.push({
+        quoteId: quote.id,
+        number: Number(quote.number || 0),
+        customerId: quote.customerId,
+        sellerId: quote.sellerId,
+        qty: line.qty,
+        stockQty: stockPortion(line),
+        transitQty: transitPortion(line),
+        createdAt: quote.createdAt,
+      });
+    }
+  }
+  holdDrafts.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  const incomingDrafts: Omit<ProductIncomingLot, "reservedOnArrival" | "freeOnArrival">[] = [];
+  for (const idoc of importsSnap.docs) {
+    const order = { id: idoc.id, ...idoc.data() } as ImportOrder;
+    for (const line of order.lines || []) {
+      if (line.productId !== product.id) continue;
+      incomingDrafts.push({
+        importId: order.id,
+        number: Number(order.number || 0),
+        supplier: order.supplier || null,
+        status: order.status,
+        eta: order.eta || "",
+        qty: Number(line.qty || 0),
+      });
+    }
+  }
+  incomingDrafts.sort((a, b) => {
+    const eta = (a.eta || "").localeCompare(b.eta || "");
+    if (eta !== 0) return eta;
+    return a.number - b.number;
+  });
+  const incoming = allocateIncomingLots(incomingDrafts, availability.transitApartado);
+
+  const rawMovements = movementsSnap.docs.map(
+    (d) => ({ id: d.id, ...d.data() }) as InventoryMovement
+  );
+  rawMovements.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const stats = movementStats(rawMovements);
+  const movements = rawMovements.slice(0, 150);
+
+  const [customers, sellers, users, quotes] = await Promise.all([
+    getDocsByIds<Customer>(
+      "customers",
+      holdDrafts.map((h) => h.customerId)
+    ),
+    getDocsByIds<User>(
+      "users",
+      holdDrafts.map((h) => h.sellerId)
+    ),
+    getDocsByIds<{ name?: string }>(
+      "users",
+      movements.map((m) => m.userId)
+    ),
+    getDocsByIds<{ number?: number }>(
+      "quotes",
+      movements.map((m) => m.quoteId)
+    ),
+  ]);
+
+  const holds: ProductReservationHold[] = holdDrafts.map((h) => ({
+    quoteId: h.quoteId,
+    number: h.number,
+    customerName: customers.get(h.customerId)?.name || "Cliente",
+    sellerName: sellers.get(h.sellerId)?.name || "Vendedor",
+    sellerId: h.sellerId,
+    qty: h.qty,
+    stockQty: h.stockQty,
+    transitQty: h.transitQty,
+    createdAt: h.createdAt,
+  }));
+
+  for (const m of movements) {
+    m.product = productWithAvail;
+    if (m.userId) {
+      const u = users.get(m.userId);
+      m.user = u ? { name: String(u.name || "Usuario") } : null;
+    }
+    if (m.quoteId) {
+      const q = quotes.get(m.quoteId);
+      m.quote = q ? { number: Number(q.number || 0) } : null;
+    }
+  }
+
+  return {
+    product: productWithAvail,
+    holds,
+    incoming,
+    movements,
+    stats,
+  };
 }
 
 async function nextNumber(counter: "quotes" | "imports"): Promise<number> {

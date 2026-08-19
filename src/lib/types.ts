@@ -180,6 +180,48 @@ export type DailyInventorySummary = {
   reservations: DailyReservationClient[];
 };
 
+/** Pedido activo que retiene unidades de un producto. */
+export type ProductReservationHold = {
+  quoteId: string;
+  number: number;
+  customerName: string;
+  sellerName: string;
+  sellerId: string;
+  qty: number;
+  stockQty: number;
+  transitQty: number;
+  createdAt: string;
+};
+
+/** Lote de importación abierta de un producto, con lo que se despacha al llegar. */
+export type ProductIncomingLot = {
+  importId: string;
+  number: number;
+  supplier: string | null;
+  status: ImportStatus;
+  eta: string;
+  qty: number;
+  /** Apartados que se convierten si este lote llega en orden de ETA */
+  reservedOnArrival: number;
+  freeOnArrival: number;
+};
+
+export type ProductHistoryStats = {
+  soldQty: number;
+  enteredQty: number;
+  firstMovementAt: string | null;
+  lastMovementAt: string | null;
+};
+
+/** Ficha histórica de un producto: stock, reservas al llegar y bitácora. */
+export type ProductHistory = {
+  product: Product;
+  holds: ProductReservationHold[];
+  incoming: ProductIncomingLot[];
+  movements: InventoryMovement[];
+  stats: ProductHistoryStats;
+};
+
 export type ImportOrderLine = {
   id: string;
   productId: string;

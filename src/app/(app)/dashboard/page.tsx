@@ -201,15 +201,22 @@ export default async function DashboardPage() {
           </div>
           <div className="space-y-2">
             {lowStock.slice(0, 5).map((p) => (
-              <Card key={p.id} className="flex items-center justify-between py-3">
-                <div>
-                  <p className="font-semibold">{p.sku}</p>
-                  <p className="text-sm text-muted">{productDisplayName(p.name)}</p>
-                </div>
-                <Badge tone={(p.available ?? 0) <= 0 ? "danger" : "warn"}>
-                  Disp. {p.availableTotal ?? p.available}
-                </Badge>
-              </Card>
+              <Link
+                key={p.id}
+                href={`/inventory/${encodeURIComponent(p.sku)}`}
+                prefetch={false}
+                className="block"
+              >
+                <Card className="flex items-center justify-between py-3">
+                  <div>
+                    <p className="font-semibold">{p.sku}</p>
+                    <p className="text-sm text-muted">{productDisplayName(p.name)}</p>
+                  </div>
+                  <Badge tone={(p.available ?? 0) <= 0 ? "danger" : "warn"}>
+                    Disp. {p.availableTotal ?? p.available}
+                  </Badge>
+                </Card>
+              </Link>
             ))}
           </div>
         </section>
