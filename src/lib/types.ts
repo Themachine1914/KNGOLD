@@ -73,6 +73,8 @@ export type Product = {
   netPrice: number;
   stockOnHand: number;
   active: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
   reserved?: number;
   available?: number;
   /** Unidades en pedidos ORDERED / IN_TRANSIT */
@@ -178,6 +180,51 @@ export type DailyInventorySummary = {
   transitAmount: number;
   /** Clientes que reservaron / apartaron ese día */
   reservations: DailyReservationClient[];
+};
+
+/** Pedido activo que retiene unidades de un producto. */
+export type ProductReservationHold = {
+  quoteId: string;
+  number: number;
+  customerName: string;
+  sellerName: string;
+  sellerId: string;
+  qty: number;
+  stockQty: number;
+  transitQty: number;
+  createdAt: string;
+};
+
+/** Lote de importación abierta de un producto, con lo que se despacha al llegar. */
+export type ProductIncomingLot = {
+  importId: string;
+  number: number;
+  supplier: string | null;
+  status: ImportStatus;
+  eta: string;
+  qty: number;
+  /** Apartados que se convierten si este lote llega en orden de ETA */
+  reservedOnArrival: number;
+  freeOnArrival: number;
+};
+
+export type ProductHistoryStats = {
+  soldQty: number;
+  enteredQty: number;
+  /** Físico al dar de alta el producto en la app */
+  registeredStock: number;
+  registeredAt: string | null;
+  firstMovementAt: string | null;
+  lastMovementAt: string | null;
+};
+
+/** Ficha histórica de un producto: stock, reservas al llegar y bitácora. */
+export type ProductHistory = {
+  product: Product;
+  holds: ProductReservationHold[];
+  incoming: ProductIncomingLot[];
+  movements: InventoryMovement[];
+  stats: ProductHistoryStats;
 };
 
 export type ImportOrderLine = {

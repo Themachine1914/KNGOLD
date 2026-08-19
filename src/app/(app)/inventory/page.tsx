@@ -9,6 +9,7 @@ import { NewProductForm } from "@/components/new-product-form";
 import { ProductThumb } from "@/components/product-thumb";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 import { productDisplayName } from "@/lib/product-label";
+import Link from "next/link";
 
 export default async function InventoryPage({
   searchParams,
@@ -62,24 +63,26 @@ export default async function InventoryPage({
       </form>
 
       <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-        <a
+        <Link
           href="/inventory"
+          prefetch={false}
           className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${
             !type ? "bg-ink text-white" : "bg-white text-muted border border-border"
           }`}
         >
           Todos
-        </a>
+        </Link>
         {types.map((t) => (
-          <a
+          <Link
             key={t}
             href={`/inventory?type=${encodeURIComponent(t)}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+            prefetch={false}
             className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${
               type === t ? "bg-ink text-white" : "bg-white text-muted border border-border"
             }`}
           >
             {t}
-          </a>
+          </Link>
         ))}
       </div>
 
@@ -161,6 +164,14 @@ export default async function InventoryPage({
                   {p.transitApartado} UND ya apartadas de lo que viene en camino.
                 </p>
               ) : null}
+
+              <Link
+                href={`/inventory/${encodeURIComponent(p.sku)}`}
+                prefetch={false}
+                className="mt-3 block text-center text-sm font-semibold text-ink underline decoration-gold/70 underline-offset-4"
+              >
+                Historial y reservas al llegar
+              </Link>
 
               {isManager ? (
                 <>
