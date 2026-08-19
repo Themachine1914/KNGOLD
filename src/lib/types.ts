@@ -73,6 +73,8 @@ export type Product = {
   netPrice: number;
   stockOnHand: number;
   active: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
   reserved?: number;
   available?: number;
   /** Unidades en pedidos ORDERED / IN_TRANSIT */
@@ -209,6 +211,9 @@ export type ProductIncomingLot = {
 export type ProductHistoryStats = {
   soldQty: number;
   enteredQty: number;
+  /** Físico al dar de alta el producto en la app */
+  registeredStock: number;
+  registeredAt: string | null;
   firstMovementAt: string | null;
   lastMovementAt: string | null;
 };

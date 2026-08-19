@@ -271,7 +271,29 @@ async function findProductDoc(ref: string): Promise<FirebaseFirestore.DocumentSn
   return null;
 }
 
-function movementStats(movements: InventoryMovement[]): ProductHistory["stats"] {
+function physicalDelta(m: InventoryMovement): number {
+  switch (m.type) {
+    case "ENTRADA":
+    case "ANULACION_VENTA":
+      return m.qty;
+    case "SALIDA":
+    case "CONFIRMACION_VENTA":
+      return -m.qty;
+    case "AJUSTE": {
+      const note = m.note || "";
+      if (note.includes("-") || /ajuste de inventario\s*\(-\d+/i.test(note)) return -m.qty;
+      return m.qty;
+    }
+    default:
+      return 0;
+  }
+}
+
+function movementStats(
+  movements: InventoryMovement[],
+  currentStock: number,
+  productCreatedAt?: string | null
+): ProductHistory["stats"] {
   let soldQty = 0;
   let enteredQty = 0;
   let firstMovementAt: string | null = null;
@@ -283,7 +305,46 @@ function movementStats(movements: InventoryMovement[]): ProductHistory["stats"] 
     if (!firstMovementAt || m.createdAt < firstMovementAt) firstMovementAt = m.createdAt;
     if (!lastMovementAt || m.createdAt > lastMovementAt) lastMovementAt = m.createdAt;
   }
-  return { soldQty: Math.max(0, soldQty), enteredQty, firstMovementAt, lastMovementAt };
+
+  const alta = [...movements]
+    .filter(
+      (m) => m.type === "ENTRADA" && /alta de producto/i.test(m.note || "")
+    )
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+
+  let registeredStock = currentStock;
+  let registeredAt = productCreatedAt || alta?.createdAt || firstMovementAt || null;
+
+  if (alta) {
+    registeredStock = alta.qty;
+    registeredAt = alta.createdAt;
+  } else {
+    const physical = [...movements]
+      .filter((m) => physicalDelta(m) !== 0)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    if (physical.length === 0) {
+      registeredStock = currentStock;
+    } else {
+      const first = physical[0];
+      const before = first.stockAfter - physicalDelta(first);
+      if (first.type === "ENTRADA" && before === 0) {
+        registeredStock = first.stockAfter;
+        registeredAt = first.createdAt;
+      } else {
+        registeredStock = before;
+        registeredAt = productCreatedAt || first.createdAt;
+      }
+    }
+  }
+
+  return {
+    soldQty: Math.max(0, soldQty),
+    enteredQty,
+    registeredStock: Math.max(0, registeredStock),
+    registeredAt,
+    firstMovementAt,
+    lastMovementAt,
+  };
 }
 
 function allocateIncomingLots(
@@ -365,7 +426,11 @@ export async function getProductHistory(ref: string): Promise<ProductHistory | n
     (d) => ({ id: d.id, ...d.data() }) as InventoryMovement
   );
   rawMovements.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const stats = movementStats(rawMovements);
+  const stats = movementStats(
+    rawMovements,
+    product.stockOnHand,
+    product.createdAt
+  );
   const movements = rawMovements.slice(0, 150);
 
   const [customers, sellers, users, quotes] = await Promise.all([

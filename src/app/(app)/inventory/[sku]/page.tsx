@@ -55,6 +55,7 @@ export default async function ProductHistoryPage({
   const freeOnArrival = product.availableTransit ?? 0;
   const warehouseReserved = product.reserved ?? 0;
   const warehouseFree = product.available ?? 0;
+  const reservedTotal = warehouseReserved + reservedOnArrival;
   const availableTotal = product.availableTotal ?? warehouseFree + freeOnArrival;
   const physicalAfter = product.stockOnHand + arriving;
   const reservedAfter = warehouseReserved + reservedOnArrival;
@@ -91,6 +92,55 @@ export default async function ProductHistoryPage({
               <p className="mt-1 text-sm font-semibold">{formatRD(product.netPrice)}</p>
             </div>
           </div>
+        </Card>
+
+        <Card>
+          <p className="font-semibold text-ink">Registro</p>
+          <p className="mt-1 text-sm text-muted">
+            Stock al dar de alta, lo que viene en camino y lo que ya está apartado.
+            {stats.registeredAt
+              ? ` Alta: ${fmtDate(stats.registeredAt, "dd MMM yyyy")}.`
+              : ""}
+          </p>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <Stat
+              label="Al registrar"
+              value={stats.registeredStock}
+              hint="Físico inicial"
+            />
+            <Stat
+              label="En tránsito"
+              value={arriving}
+              hint="En camino"
+              tone="gold"
+            />
+            <Stat
+              label="Reservadas"
+              value={reservedTotal}
+              hint="Almacén + tránsito"
+              tone="gold"
+            />
+          </div>
+          <p className="mt-3 text-sm text-muted">
+            Al dar de alta había{" "}
+            <span className="font-semibold tabular-nums text-ink">{stats.registeredStock}</span>{" "}
+            UND. Hoy el físico es{" "}
+            <span className="font-semibold tabular-nums text-ink">{product.stockOnHand}</span>
+            {stats.soldQty > 0 ? ` · vendidas ${stats.soldQty}` : ""}.
+            {arriving > 0 ? (
+              <>
+                {" "}
+                En tránsito van{" "}
+                <span className="font-semibold tabular-nums text-ink">{arriving}</span>
+                {" "}({reservedOnArrival} ya reservadas para despachar + {freeOnArrival} libres).
+              </>
+            ) : (
+              " No hay importación abierta."
+            )}{" "}
+            Reservado ahora:{" "}
+            <span className="font-semibold tabular-nums text-ink">{reservedTotal}</span> UND
+            {" "}({warehouseReserved} de almacén + {reservedOnArrival} de lo que viene).
+          </p>
         </Card>
 
         {arriving > 0 ? (
