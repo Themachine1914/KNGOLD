@@ -7,6 +7,7 @@ import { AdjustStockForm } from "@/components/adjust-stock-form";
 import { EditProductPriceForm } from "@/components/edit-product-price-form";
 import { NewProductForm } from "@/components/new-product-form";
 import { ProductThumb } from "@/components/product-thumb";
+import { ChangePhotoButton } from "@/components/change-photo-button";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 import { productDisplayName } from "@/lib/product-label";
 import Link from "next/link";
@@ -186,6 +187,7 @@ export default async function InventoryPage({
                     sku={p.sku}
                     stockOnHand={p.stockOnHand}
                   />
+                  <ChangePhotoButton productId={p.id} />
                 </>
               ) : null}
             </Card>
