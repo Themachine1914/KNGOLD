@@ -10,6 +10,7 @@ import { productDisplayName } from "@/lib/product-label";
 import { LOW_STOCK_THRESHOLD } from "@/lib/constants";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { ProductThumb } from "@/components/product-thumb";
+import { ChangePhotoButton } from "@/components/change-photo-button";
 
 function Stat({
   label,
@@ -92,6 +93,7 @@ export default async function ProductHistoryPage({
               <p className="mt-1 text-sm font-semibold">{formatRD(product.netPrice)}</p>
             </div>
           </div>
+          {isManager ? <ChangePhotoButton productId={product.id} /> : null}
         </Card>
 
         <a
