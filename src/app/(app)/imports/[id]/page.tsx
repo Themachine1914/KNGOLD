@@ -10,6 +10,7 @@ import { ProductThumb } from "@/components/product-thumb";
 import { ImportActions } from "@/components/import-actions";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import { fmtDate } from "@/lib/dates";
 
 export default async function ImportDetailPage({
   params,
@@ -49,7 +50,7 @@ export default async function ImportDetailPage({
           {order.arrivedAt ? (
             <p>
               <span className="text-muted">Llegó:</span>{" "}
-              {format(parseISO(order.arrivedAt), "dd MMM yyyy HH:mm", { locale: es })}
+              {fmtDate(order.arrivedAt, "dd MMM yyyy h:mm a")}
             </p>
           ) : null}
           <p>

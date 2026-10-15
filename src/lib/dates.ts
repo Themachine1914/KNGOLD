@@ -12,7 +12,17 @@ import { es } from "date-fns/locale";
 export function fmtDate(iso: string | null | undefined, pattern: string): string {
   if (!iso) return "—";
   const d = parseISO(iso);
-  return isValid(d) ? format(d, pattern, { locale: es }) : "—";
+  if (!isValid(d)) return "—";
+  // Las horas se muestran en hora de RD: en Vercel el servidor corre en UTC.
+  // Solo si el patrón lleva hora; una fecha sola ("2026-10-20") se correría de día.
+  return format(/[Hh]/.test(pattern) ? toDoWallTime(d) : d, pattern, { locale: es });
+}
+
+const DO_TZ = "America/Santo_Domingo";
+
+/** La misma hora de reloj que en Santo Domingo, sin importar la zona del servidor. */
+function toDoWallTime(d: Date): Date {
+  return new Date(d.toLocaleString("en-US", { timeZone: DO_TZ }));
 }
 
 /** "hace 5 minutos", "en 2 días". Devuelve "—" si la fecha no sirve. */

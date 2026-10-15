@@ -11,8 +11,7 @@ import {
 import { movementTone } from "@/lib/labels";
 import { roleLabel } from "@/lib/roles";
 import { Badge, Button, Card, EmptyState } from "@/components/ui";
-import { format, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
+import { fmtDate } from "@/lib/dates";
 
 export function UserActivityPanel({
   users,
@@ -154,7 +153,7 @@ export function UserActivityPanel({
               </p>
               <p className="text-sm text-muted">
                 {r.userName} ·{" "}
-                {format(parseISO(r.createdAt), "dd MMM yyyy · HH:mm", { locale: es })} · qty{" "}
+                {fmtDate(r.createdAt, "dd MMM yyyy · h:mm a")} · qty{" "}
                 {r.qty}
               </p>
               {r.note ? <p className="mt-1 text-xs text-muted">{r.note}</p> : null}

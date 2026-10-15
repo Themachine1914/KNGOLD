@@ -120,10 +120,10 @@ const styles = StyleSheet.create({
 });
 
 function fmtDate(d: Date) {
-  return d.toLocaleString("es-DO", {
-    dateStyle: "long",
-    timeStyle: "short",
-  });
+  const timeZone = "America/Santo_Domingo";
+  const date = d.toLocaleDateString("es-DO", { dateStyle: "long", timeZone });
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone });
+  return `${date}, ${time}`;
 }
 
 function Row({ concept, qty, strong }: { concept: string; qty: number; strong?: boolean }) {

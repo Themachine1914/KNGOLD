@@ -4,8 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { ManagedUser, SeatInfo } from "@/lib/users-types";
 import { Badge, Button, Card, EmptyState, Input, Label } from "@/components/ui";
-import { format, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
+import { fmtDate } from "@/lib/dates";
 
 function genPassword() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
@@ -350,9 +349,7 @@ export function UsersAdminPanel({
                       {u.expiresAt ? (
                         <p className="mt-1 text-xs text-muted">
                           Vence{" "}
-                          {format(parseISO(u.expiresAt), "dd MMM yyyy · HH:mm", {
-                            locale: es,
-                          })}
+                          {fmtDate(u.expiresAt, "dd MMM yyyy · h:mm a")}
                         </p>
                       ) : null}
                     </div>

@@ -15,8 +15,7 @@ import { QuoteActions } from "@/components/quote-actions";
 import { EditQuoteLines } from "@/components/edit-quote-lines";
 import { ShareQuotePdfButton } from "@/components/share-quote-pdf-button";
 import { ProductThumb } from "@/components/product-thumb";
-import { format, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
+import { fmtDate } from "@/lib/dates";
 
 export default async function QuoteDetailPage({
   params,
@@ -79,7 +78,7 @@ export default async function QuoteDetailPage({
           {quote.customer?.phone ? <p><span className="text-muted">Tel:</span> {quote.customer.phone}</p> : null}
           <p>
             <span className="text-muted">Creada:</span>{" "}
-            {format(parseISO(quote.createdAt), "dd MMM yyyy HH:mm", { locale: es })}
+            {fmtDate(quote.createdAt, "dd MMM yyyy h:mm a")}
           </p>
           {quote.status === "RESERVED" ? (
             <p>

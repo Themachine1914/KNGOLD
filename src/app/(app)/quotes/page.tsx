@@ -19,8 +19,7 @@ import {
 } from "@/lib/labels";
 import { ListFiltersBar } from "@/components/list-filters-bar";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui";
-import { format, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
+import { fmtDate } from "@/lib/dates";
 
 export default async function QuotesPage({
   searchParams,
@@ -119,7 +118,7 @@ export default async function QuotesPage({
                   <div className="text-right">
                     <Badge tone={quoteStatusTone(q.status)}>{quoteStatusLabel(q.status)}</Badge>
                     <p className="mt-2 text-xs text-muted">
-                      {format(parseISO(q.createdAt), "dd MMM HH:mm", { locale: es })}
+                      {fmtDate(q.createdAt, "dd MMM h:mm a")}
                     </p>
                   </div>
                 </div>

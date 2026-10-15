@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { format, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
+import { fmtDate } from "@/lib/dates";
 import { Button, Card, EmptyState } from "./ui";
 import type { AppNotification } from "@/lib/types";
 
@@ -81,7 +80,7 @@ export function NotificationsList() {
               </div>
               <p className="text-sm text-muted">{n.body}</p>
               <p className="text-xs text-muted">
-                {format(parseISO(n.createdAt), "dd MMM HH:mm", { locale: es })}
+                {fmtDate(n.createdAt, "dd MMM h:mm a")}
               </p>
             </Card>
           </Link>

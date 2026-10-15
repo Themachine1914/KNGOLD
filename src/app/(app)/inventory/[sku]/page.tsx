@@ -227,7 +227,7 @@ export default async function ProductHistoryPage({
           <p className="px-0.5 text-xs text-muted">
             Registro desde {fmtDate(stats.firstMovementAt, "dd MMM yyyy")}
             {stats.lastMovementAt
-              ? ` · último movimiento ${fmtDate(stats.lastMovementAt, "dd MMM yyyy HH:mm")}`
+              ? ` · último movimiento ${fmtDate(stats.lastMovementAt, "dd MMM yyyy h:mm a")}`
               : ""}
           </p>
         ) : (
@@ -353,7 +353,7 @@ export default async function ProductHistoryPage({
                           ) : null}
                         </div>
                         <p className="text-sm text-muted">
-                          {m.user?.name || "Sistema"} · {fmtDate(m.createdAt, "dd MMM · HH:mm")}
+                          {m.user?.name || "Sistema"} · {fmtDate(m.createdAt, "dd MMM · h:mm a")}
                         </p>
                         {m.note ? <p className="mt-1 text-xs text-muted">{m.note}</p> : null}
                       </div>

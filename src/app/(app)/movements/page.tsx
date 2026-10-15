@@ -15,8 +15,7 @@ import { productDisplayName } from "@/lib/product-label";
 import { ListFiltersBar } from "@/components/list-filters-bar";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { ProductThumb } from "@/components/product-thumb";
-import { format, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
+import { fmtDate } from "@/lib/dates";
 
 export default async function MovementsPage({
   searchParams,
@@ -115,7 +114,7 @@ export default async function MovementsPage({
                     </p>
                     <p className="text-sm text-muted">
                       {m.user?.name || "Sistema"} ·{" "}
-                      {format(parseISO(m.createdAt), "dd MMM · HH:mm", { locale: es })}
+                      {fmtDate(m.createdAt, "dd MMM · h:mm a")}
                     </p>
                     {m.note ? <p className="mt-1 text-xs text-muted">{m.note}</p> : null}
                   </div>
